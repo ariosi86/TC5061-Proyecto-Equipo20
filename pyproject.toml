@@ -1,0 +1,32 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "proyecto_mibici"
+version = "0.0.1"
+description = "Dise\u00f1ar, como equipo, una propuesta de soluci\u00f3n de Machine Learning para un conjunto de preguntas sobre el sistema de bicicleta p\u00fablica MiBici, que combine modelos de regresi\u00f3n, clasificaci\u00f3n y clustering."
+authors = [
+  { name = "Martha Patricia Garc\u00eda \u00c1ngeles, Jes\u00fas Alejandro Ju\u00e1rez Gonz\u00e1lez, Antonio R\u00edos Islas, Ariel Torres Moreno" },
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
+]
+requires-python = ">=3.10.0"
+
+
+[tool.ruff]
+line-length = 99
+src = ["proyecto_mibici"]
+include = ["pyproject.toml", "proyecto_mibici/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Add import sorting
+
+[tool.ruff.lint.isort]
+known-first-party = ["proyecto_mibici"]
+force-sort-within-sections = true
+
