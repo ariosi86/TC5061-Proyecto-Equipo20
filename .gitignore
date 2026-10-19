@@ -198,7 +198,7 @@ data/processed/*
 !data/raw/.gitkeep
 !data/interim/.gitkeep
 !data/processed/.gitkeep
-!data/manifest.json
+data/manifest.json
 
 # Archivos pesados
 *.csv
@@ -210,3 +210,14 @@ models/*.joblib
 mlruns/
 mlartifacts/
 .env
+mlflow.db
+
+
+reports/
+.ipynb_checkpoints/
+
+*.db
+*.db-journal
+
+*.log
+outputs/
