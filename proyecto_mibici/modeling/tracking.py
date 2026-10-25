@@ -5,20 +5,41 @@ Módulo de integración defensiva con MLflow Tracking convertido en clase orient
 """
 
 import hashlib
+import os
 import subprocess
 from pathlib import Path
+
+from loguru import logger
 
 import mlflow
 import mlflow.sklearn
 import pandas as pd  
 from mlflow.models import infer_signature
+try:
+    from mlflow.data.pandas_dataset import from_df  # mlflow < 3
+except ImportError:  # mlflow >= 3
+    from mlflow.data.pandas_dataset import from_pandas as from_df
+
+try:
+    import lightgbm as lgb
+except ImportError:
+    lgb = None
+try:
+    import mlflow.lightgbm
+except ImportError:
+    mlflow_lightgbm = None
+else:
+    mlflow_lightgbm = mlflow.lightgbm
 
 from proyecto_mibici.config import (
     FIGURES_DIR,
     MANIFEST_PATH,
+    MLFLOW_EXPERIMENT_NAME,
     PROJ_ROOT,
     TRIPS_PROCESSED_PATH
 )
+
+CONFIG_PATH = PROJ_ROOT / "proyecto_mibici" / "config.py"
 
 NOMBRES_CONJUNTO = {
     "Train": "train",
@@ -83,6 +104,51 @@ class MLFlowTracker:
                     continue
         return metricas
 
+    @staticmethod
+    def _get_source_tags() -> dict:
+        """Obtiene los tags de source del run activo (si existe) para propagarlos a runs hijos."""
+        tags = {}
+        run_activo = mlflow.active_run()
+        if run_activo is not None:
+            run_data = mlflow.get_run(run_activo.info.run_id).data
+            source_keys = [
+                "mlflow.source.type",
+                "mlflow.source.name",
+                "mlflow.source.git.commit",
+                "mlflow.source.git.repoURL",
+                "mlflow.source.git.branch",
+                "mlflow.source.git.dirty",
+                "mlflow.project.entryPoint",
+                "mlflow.project.env",
+                "mlflow.source.git.repoURL",
+            ]
+            for k in source_keys:
+                v = run_data.tags.get(k)
+                if v is not None:
+                    tags[k] = v
+        return tags
+
+    @staticmethod
+    def propagar_source_tags() -> None:
+        """Propaga los tags de source del run padre al run activo actual (run hijo)."""
+        source_tags = MLFlowTracker._get_source_tags()
+        if source_tags:
+            mlflow.set_tags(source_tags)
+
+    @staticmethod
+    def log_params_nuevos(params: dict) -> None:
+        """Registra en la corrida activa solo los parámetros que todavía no tiene.
+
+        Con mlflow run, MLflow registra los -P (modelo, pregunta, n_clusters, etc.) antes
+        de ejecutar el script, y no permite cambiar el valor de un parámetro ya registrado.
+        En una corrida nueva (por ejemplo, la hija de una búsqueda) se registran todos.
+        """
+        run_id = mlflow.active_run().info.run_id
+        ya_registrados = mlflow.get_run(run_id).data.params
+        nuevos = {k: str(v) for k, v in params.items() if k not in ya_registrados}
+        if nuevos:
+            mlflow.log_params(nuevos)
+
     def armar_params_tags(
         self,
         pregunta: str,
@@ -126,12 +192,51 @@ class MLFlowTracker:
         modelo=None,
         X_ejemplo=None,
         figuras: dict = None,
+        serialization_format: str = None,
+        df_train: pd.DataFrame = None,
+        ruta_entrenamiento: str = None,
+        nested: bool = False,
     ) -> str:
-        """Crea un run con parámetros, métricas, modelo, figuras y tabla por estación."""
-        with mlflow.start_run(run_name=run_name) as run:
-            mlflow.log_params({k: str(v) for k, v in params.items()})
+        """Crea un run con parámetros, métricas, modelo, figuras y tabla por estación.
+
+        Si nested=True, no cierra el run activo previo y crea el run como hijo anidado
+        heredando los tags de source (mlflow.source.type=PROJECT, etc.) del run padre.
+        """
+        # Etiqueta question automática a partir del parámetro pregunta
+        if "question" not in tags and "pregunta" in params:
+            tags = {**tags, "question": params["pregunta"]}
+
+        # Asegurar que usamos el experimento correcto
+        mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+
+        # Propagar tags de source (mlflow.source.type=PROJECT, etc.) del run activo
+        source_tags = self._get_source_tags()
+        if source_tags:
+            tags = {**tags, **source_tags}
+
+        # Terminar run activo previo SOLO si NO es anidado
+        if not nested:
+            try:
+                mlflow.end_run()
+            except Exception:
+                pass
+
+        with mlflow.start_run(run_name=run_name, nested=nested) as run:
+            self.log_params_nuevos(params)
             mlflow.log_metrics(self.metricas_a_dict(tabla))
             mlflow.set_tags(tags)
+
+            # Log del dataset de entrenamiento como input (versión de datos)
+            if df_train is not None:
+                try:
+                    training_dataset = from_df(
+                        df_train,
+                        source=ruta_entrenamiento or str(TRIPS_PROCESSED_PATH),
+                        name="train_set",
+                    )
+                    mlflow.log_input(training_dataset, context="training")
+                except Exception as e:
+                    logger.warning(f"No se pudo registrar mlflow.log_input: {e}")
 
             if modelo is not None:
                 signature = None
@@ -141,24 +246,56 @@ class MLFlowTracker:
                     except Exception:
                         signature = None
 
-                mlflow.sklearn.log_model(
-                    sk_model=modelo,
-                    name="model",
-                    signature=signature,
-                    input_example=X_ejemplo,
-                )
+                try:
+                    # Usar el sabor nativo de MLflow para LightGBM si corresponde
+                    if lgb is not None and isinstance(modelo, lgb.LGBMRegressor):
+                        if mlflow_lightgbm is not None:
+                            mlflow_lightgbm.log_model(
+                                lgb_model=modelo,
+                                artifact_path="model",
+                                signature=signature,
+                                input_example=X_ejemplo,
+                            )
+                        else:
+                            logger.warning("mlflow.lightgbm no disponible; usando mlflow.sklearn.log_model")
+                            kwargs_modelo = {}
+                            if serialization_format is not None:
+                                kwargs_modelo["serialization_format"] = serialization_format
+                            mlflow.sklearn.log_model(
+                                sk_model=modelo,
+                                artifact_path="model",
+                                signature=signature,
+                                input_example=X_ejemplo,
+                                **kwargs_modelo,
+                            )
+                    else:
+                        kwargs_modelo = {}
+                        if serialization_format is not None:
+                            kwargs_modelo["serialization_format"] = serialization_format
+                        mlflow.sklearn.log_model(
+                            sk_model=modelo,
+                            artifact_path="model",
+                            signature=signature,
+                            input_example=X_ejemplo,
+                            **kwargs_modelo,
+                        )
+                except Exception as e:
+                    logger.warning(f"No se pudo loggear el modelo en MLflow: {e}")
 
             if figuras:
                 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
                 for nombre, fig in figuras.items():
-                    mlflow.log_figure(fig, f"graficas/{nombre}.png")
+                    mlflow.log_figure(fig, f"plots/{nombre}.png")
                     ruta_local_fig = FIGURES_DIR / f"{nombre}.png"
                     fig.savefig(ruta_local_fig, dpi=150, bbox_inches="tight")
 
             if tabla_est is not None and not tabla_est.empty:
-                mlflow.log_text(tabla_est.to_csv(index=False), "metricas_por_estacion.csv")
+                mlflow.log_text(tabla_est.to_csv(index=False), "data/metricas_por_estacion.csv")
 
             if Path(MANIFEST_PATH).exists():
-                mlflow.log_artifact(str(MANIFEST_PATH))
+                mlflow.log_artifact(str(MANIFEST_PATH), artifact_path="data")
+
+            if Path(CONFIG_PATH).exists():
+                mlflow.log_artifact(str(CONFIG_PATH), artifact_path="config")
 
             return run.info.run_id
