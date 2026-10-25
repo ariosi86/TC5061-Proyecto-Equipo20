@@ -19,28 +19,57 @@ from sklearn.preprocessing import StandardScaler
 class BaselineMunicipioP3(BaseEstimator, ClusterMixin):
     """
     Línea base no supervisada para P3 basada en demarcación municipal:
-    Asigna identificadores numéricos de grupo según el código de municipio.
+    Asigna identificadores numéricos de grupo según el código de municipio de cada estación.
     """
 
-    def __init__(self, col_municipio: str = "municipio"):
+    def __init__(self, col_municipio: str = "municipality_code"):
         self.col_municipio = col_municipio
-        self.categorias_: Optional[dict] = None
 
-    def fit(self, X: pd.DataFrame, y: Optional[Union[pd.Series, np.ndarray]] = None):
+    def fit(
+        self,
+        X: pd.DataFrame,
+        y: Optional[Union[pd.Series, np.ndarray]] = None,
+        df_stations: Optional[pd.DataFrame] = None,
+    ):
+        # 1. Si la columna viene dentro del DataFrame
         if self.col_municipio in X.columns:
-            valores = X[self.col_municipio].dropna().unique()
-        elif X.index.name == "id" or "origen_id" in X.columns:
-            valores = np.array(["GDL", "ZPN", "TLA", "TON"])
+            series_mun = X[self.col_municipio]
+        # 2. Si se proporciona el catálogo de estaciones para cruzar por el índice
+        elif df_stations is not None and "id" in df_stations.columns and self.col_municipio in df_stations.columns:
+            mapa = df_stations.set_index("id")[self.col_municipio]
+            series_mun = X.index.map(mapa)
         else:
-            valores = np.array([0, 1, 2, 3])
-        self.categorias_ = {val: idx for idx, val in enumerate(sorted(valores))}
+            raise KeyError(
+                f"No se encontró '{self.col_municipio}' en las columnas de entrada ni catálogo disponible."
+            )
+
+        unicos = sorted(pd.Series(series_mun).dropna().unique())
+        self.categorias_ = {val: idx for idx, val in enumerate(unicos)}
         return self
 
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
-        if self.col_municipio in X.columns and self.categorias_ is not None:
-            codigos = X[self.col_municipio].map(self.categorias_).fillna(0).astype(int)
-            return codigos.to_numpy()
-        return np.zeros(len(X), dtype=int)
+    def predict(
+        self, X: pd.DataFrame, df_stations: Optional[pd.DataFrame] = None
+    ) -> np.ndarray:
+        if not hasattr(self, "categorias_"):
+            raise ValueError("El modelo debe ajustarse antes de predecir.")
+
+        if self.col_municipio in X.columns:
+            series_mun = X[self.col_municipio]
+        elif df_stations is not None and "id" in df_stations.columns:
+            mapa = df_stations.set_index("id")[self.col_municipio]
+            series_mun = X.index.map(mapa)
+        else:
+            raise KeyError("Se requiere la columna de municipio o catálogo df_stations para inferir.")
+
+        return series_mun.map(self.categorias_).fillna(-1).astype(int).to_numpy()
+
+    def fit_predict(
+        self,
+        X: pd.DataFrame,
+        y: Optional[Union[pd.Series, np.ndarray]] = None,
+        df_stations: Optional[pd.DataFrame] = None,
+    ) -> np.ndarray:
+        return self.fit(X, y, df_stations=df_stations).predict(X, df_stations=df_stations)
 
 
 class ClusterKMeansP3(BaseEstimator, ClusterMixin):
@@ -48,54 +77,65 @@ class ClusterKMeansP3(BaseEstimator, ClusterMixin):
     Pipeline de scikit-learn con StandardScaler + KMeans para segmentación funcional.
     """
 
-    def __init__(self, n_clusters: int = 4, n_init: int = 10, random_state: int = 42):
+    def __init__(
+        self,
+        n_clusters: int = 4,
+        n_init: int = 10,
+        random_state: int = 42,
+        features: Optional[List[str]] = None,
+    ):
         self.n_clusters = n_clusters
         self.n_init = n_init
         self.random_state = random_state
-        self.pipeline = Pipeline([
+        self.features = features
+
+    def fit(self, X: pd.DataFrame, y: Optional[Union[pd.Series, np.ndarray]] = None):
+        self.features_ = (
+            list(self.features) if self.features is not None else list(X.columns)
+        )
+        self.pipeline_ = Pipeline([
             ("scaler", StandardScaler()),
             (
                 "clusterer",
                 KMeans(
-                    n_clusters=n_clusters,
-                    n_init=n_init,
-                    random_state=random_state,
+                    n_clusters=self.n_clusters,
+                    n_init=self.n_init,
+                    random_state=self.random_state,
                 ),
             ),
         ])
-        self.features_: Optional[List[str]] = None
-
-    def fit(self, X: pd.DataFrame, y: Optional[Union[pd.Series, np.ndarray]] = None):
-        self.features_ = list(X.columns)
-        self.pipeline.fit(X[self.features_])
+        self.pipeline_.fit(X[self.features_])
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        if self.features_ is None:
+        if not hasattr(self, "pipeline_"):
             raise ValueError("El modelo debe ser entrenado antes de asignar clusters.")
-        return self.pipeline.predict(X[self.features_])
+        return self.pipeline_.predict(X[self.features_])
 
-    def fit_predict(self, X: pd.DataFrame, y: Optional[Union[pd.Series, np.ndarray]] = None) -> np.ndarray:
+    def fit_predict(
+        self, X: pd.DataFrame, y: Optional[Union[pd.Series, np.ndarray]] = None
+    ) -> np.ndarray:
         return self.fit(X, y).predict(X)
 
     @property
     def labels_(self) -> np.ndarray:
-        return self.pipeline.named_steps["clusterer"].labels_
-
+        return self.pipeline_.named_steps["clusterer"].labels_
+    @property
+    def pipeline(self):
+        return getattr(self, "pipeline_", None)
     @property
     def cluster_centers_(self) -> np.ndarray:
-        return self.pipeline.named_steps["clusterer"].cluster_centers_
+        return self.pipeline_.named_steps["clusterer"].cluster_centers_
 
-    def save(self, filepath: Path) -> None:
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self, filepath)
+    def save(self, filepath: Union[str, Path]) -> None:
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(self, path)
 
     @classmethod
-    def load(cls, filepath: Path) -> "ClusterKMeansP3":
-        return joblib.load(filepath)
+    def load(cls, filepath: Union[str, Path]) -> "ClusterKMeansP3":
+        return joblib.load(Path(filepath))
 
 
-# =====================================================================
-# ALIAS CRÍTICO: retrocompatibilidad con scripts que importan ClusterEstacionesP3
-# =====================================================================
+# Retrocompatibilidad
 ClusterEstacionesP3 = ClusterKMeansP3
