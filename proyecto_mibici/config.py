@@ -103,6 +103,9 @@ except ModuleNotFoundError:
 # ==========================================
 P1_TARGET = "target_next_hour"
 P1_MAX_PCT_VACIAS = 90
+P1_LR_DEFAULT = 0.05
+P1_ALPHA_DEFAULT = 0.0001
+P1_MAX_ITER_DEFAULT = 300
 
 # Partición temporal, sobre la hora objetivo (target_hour)
 P1_VAL_INICIO = "2026-01-01"
@@ -115,6 +118,27 @@ P1_FEATURES_V1 = [
 ]
 P1_FEATURES_V2 = P1_FEATURES_V1 + ["rolling_3h", "rolling_168h"]
 
+ESTRATEGIAS_BASELINE_P1 = [
+    "persistencia",
+    "lag_24h",
+    "lag_168h",
+    "promedio_24h_168h",
+]
+
+P1_LGBM_GRID_POISSON = {
+    "objective": ["poisson"],
+    "learning_rate": [0.05, 0.1],
+    "num_leaves": [63, 127],
+    "n_estimators": [300, 600],
+}
+
+P1_LGBM_GRID_TWEEDIE = {
+    "objective": ["tweedie"],
+    "learning_rate": [0.1],
+    "num_leaves": [63, 127],
+    "n_estimators": [300, 600],
+    "tweedie_variance_power":[1.2,1.5,1.8]
+}
 
 
 # ==========================================
@@ -126,6 +150,29 @@ P2_INICIO_PRUEBA = "2026-04-01"
 P2_MES_ESTACION_NUEVA = "2026_04"
 P2_HORA_INICIO_DIA = 3
 P2_UMBRAL = 0.5
+P2_CLASS_WEIGHT_DEFAULT = "balanced"
+P2_MAX_ITER_DEFAULT = 1000
+
+# GBM (HistGradientBoostingClassifier) - Candidato alternativo para P2
+P2_GBM_PARAMS = {
+    "learning_rate": 0.1,
+    "max_iter": 100,
+    "max_leaf_nodes": 31,
+    "min_samples_leaf": 20,
+    "early_stopping": True,
+    "validation_fraction": 0.1,
+    "random_state": 42,
+}
+
+# Búsqueda con nested runs sobre el GBM (criterio: PR-AUC de validación).
+# 2 x 2 x 2 = 8 combinaciones. max_iter es un tope: el modelo se detiene
+# antes si deja de mejorar (early stopping automático de scikit-learn).
+P2_GBM_GRID = {
+    "learning_rate": [0.05, 0.1],
+    "max_leaf_nodes": [31, 63],
+    "min_samples_leaf": [20, 100],
+    "max_iter": [500],
+}
 
 P2_VARIABLES = [
     "hora_del_dia", 
@@ -152,6 +199,8 @@ P2_RANDOM_STATE = 42
 # ==========================================
 P3_TRAIN_INICIO = "2025-01-01"
 P3_TRAIN_FIN = "2026-01-01"
+P3_VAL_INICIO = "2026-01-01"
+P3_VAL_FIN = "2026-05-01"
 P3_TEST_INICIO = "2026-05-01"
 P3_TEST_FIN = "2026-10-01"
 
@@ -166,5 +215,21 @@ P3_VARIABLES = [
     "balance_neto",
 ]
 P3_K_ELEGIDO = 4
+P3_N_INIT_DEFAULT = 10
 P3_MIN_VIAJES_ESTACION = 100
 P3_DURACION_MAX_MIN = 180
+
+# ==========================================
+# GRIDS DE HIPERPARÁMETROS PARA BÚSQUEDA ANIDADA
+# ==========================================
+P2_GRID_LOGISTIC = {
+    "C": [0.01, 0.1, 1.0, 10.0],
+    "max_iter": [500, 1000],
+    "class_weight": [None, "balanced"],
+}
+
+# Búsqueda de k en P3: se elige con el silhouette de validación (train_p3 --modelo kmeans_search)
+P3_GRID_KMEANS = {
+    "n_clusters": [2, 3, 4, 5, 6, 7, 8],
+    "n_init": [10],
+}

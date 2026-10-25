@@ -1,0 +1,109 @@
+name: proyecto-mibici
+
+entry_points:
+  ingest:
+    description: Ejecuta la ingesta ETL de datos abiertos de MiBici (dataset.py).
+    command: "python -m proyecto_mibici.dataset"
+
+  train_p1:
+    description: Entrena una versión del modelo P1 (demanda horaria).
+    parameters:
+      modelo:
+        type: string
+        default: "baseline"
+        description: "Nombre del modelo P1 a entrenar."
+      lr:
+        type: float
+        default: 0.05
+        description: "Tasa de aprendizaje (P1 Poisson)."
+      alpha:
+        type: float
+        default: 0.0001
+        description: "Regularización (P1 Poisson)."
+      max_iter:
+        type: integer
+        default: 300
+        description: "Iteraciones máximas (P1 Poisson)."
+    command: "python -m proyecto_mibici.modeling.train_p1 --model {modelo} --lr {lr} --alpha {alpha} --max_iter {max_iter}"
+
+  train_p2:
+    description: Entrena una versión del modelo P2 (riesgo de desbalance).
+    parameters:
+      modelo:
+        type: string
+        default: "baseline"
+        description: "Nombre del modelo P2 a entrenar."
+      umbral:
+        type: float
+        default: 0.5
+        description: "Umbral de decisión de riesgo (P2)."
+      class_weight:
+        type: string
+        default: "balanced"
+        description: "Peso de clases para Regresión Logística (P2)."
+      max_iter:
+        type: integer
+        default: 1000
+        description: "Iteraciones máximas (P2 Logistic)."
+    command: "python -m proyecto_mibici.modeling.train_p2 --modelo {modelo} --umbral {umbral} --class-weight {class_weight} --max-iter {max_iter}"
+
+  train_p3:
+    description: Entrena una versión del modelo P3 (clustering de estaciones).
+    parameters:
+      modelo:
+        type: string
+        default: "baseline"
+        description: "Nombre del modelo P3 a entrenar."
+      n_clusters:
+        type: integer
+        default: 4
+        description: "Numero de clusters (P3)."
+      n_init:
+        type: integer
+        default: 10
+        description: "n_init de KMeans (P3)."
+    command: "python -m proyecto_mibici.modeling.train_p3 --modelo {modelo} --n-clusters {n_clusters} --n-init {n_init}"
+
+  train:
+    description: Entrena una versión de una pregunta (p1, p2 o p3) recibiendo pregunta, modelo e hiperparámetros.
+    parameters:
+      pregunta:
+        type: string
+        default: "p1"
+        description: "Pregunta a entrenar: p1, p2 o p3."
+      modelo:
+        type: string
+        default: "baseline"
+        description: "Nombre del modelo a entrenar (según la pregunta)."
+      lr:
+        type: float
+        default: 0.05
+        description: "Tasa de aprendizaje (P1)."
+      alpha:
+        type: float
+        default: 0.0001
+        description: "Regularización (P1 Poisson)."
+      max_iter:
+        type: integer
+        default: 300
+        description: "Iteraciones máximas (P1 Poisson / P2 Logistic)."
+      umbral:
+        type: float
+        default: 0.5
+        description: "Umbral de decisión de riesgo (P2)."
+      class_weight:
+        type: string
+        default: "balanced"
+        description: "Peso de clases para Regresión Logística (P2)."
+      n_clusters:
+        type: integer
+        default: 4
+        description: "Numero de clusters (P3)."
+      n_init:
+        type: integer
+        default: 10
+        description: "n_init de KMeans (P3)."
+    command: "python run_train.py exec-single --pregunta {pregunta} --modelo {modelo} --lr {lr} --alpha {alpha} --max-iter {max_iter} --umbral {umbral} --class-weight {class_weight} --n-clusters {n_clusters} --n-init {n_init}"
+
+variables:
+  MLFLOW_TRACKING_URI: "http://127.0.0.1:5000"

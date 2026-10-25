@@ -17,6 +17,7 @@ pyarrow>=17.0.0
 # Modelado y MLOps
 scikit-learn>=1.5.1
 mlflow>=2.15.0
+lightgbm>=4.7.0
 
 # Visualización y Reportes
 matplotlib>=3.9.0
