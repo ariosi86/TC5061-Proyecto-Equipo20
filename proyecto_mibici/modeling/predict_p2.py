@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 Módulo de inferencia para P2: Predicción de Riesgo de Desbalance.
-Carga el Pipeline serializado (RiesgoLogisticoP2) y calcula:
-  - Inferencia de Persistencia
+Carga el modelo serializado (RiesgoLogisticoP2) y calcula:
+  - Inferencia de Persistencia (si 'en_riesgo' está presente)
   - Probabilidad continua de riesgo (prob_riesgo)
   - Clasificación binaria contra --umbral (pred_riesgo)
+Opera exclusivamente sobre archivos Parquet.
 """
 
 from pathlib import Path
@@ -16,7 +17,7 @@ import pandas as pd
 import typer
 from loguru import logger
 
-from proyecto_mibici.config import MODELS_DIR, P2_UMBRAL, P2_VARIABLES
+from proyecto_mibici.config import MODELS_DIR, P2_VARIABLES
 from proyecto_mibici.features import construir_dataset_p2
 from proyecto_mibici.modeling.model_p2 import BaselinePersistenciaP2, RiesgoLogisticoP2
 
@@ -34,19 +35,23 @@ def cargar_pipeline_p2(ruta_modelo: Optional[Path] = None) -> RiesgoLogisticoP2:
 
 
 def predecir_todos_los_modelos(
-    df: pd.DataFrame, ruta_modelo: Optional[Path] = None, umbral: float = P2_UMBRAL
+    df: pd.DataFrame, ruta_modelo: Optional[Path] = None, umbral: float = 0.5
 ) -> Dict[str, np.ndarray]:
     """Genera inferencias para la línea base y la regresión logística."""
     preds = {}
 
-    # 1. Baseline ingenuo de persistencia (si existe la columna en_riesgo)
+    # 1. Baseline ingenuo de persistencia
     if "en_riesgo" in df.columns:
         modelo_naive = BaselinePersistenciaP2(col_persistencia="en_riesgo")
         preds["pred_naive_persistencia"] = modelo_naive.predict(df).astype(int)
+    else:
+        logger.debug(
+            "Columna 'en_riesgo' ausente en entrada; se omite pred_naive_persistencia."
+        )
 
-    # 2. Modelo Logístico Campeón
+    # 2. Modelo Logístico Candidato
     pipeline = cargar_pipeline_p2(ruta_modelo)
-    
+
     cols_faltantes = set(P2_VARIABLES) - set(df.columns)
     if cols_faltantes:
         raise ValueError(
@@ -61,7 +66,7 @@ def predecir_todos_los_modelos(
 
 
 def generar_reporte_inferencia(
-    df: pd.DataFrame, ruta_modelo: Optional[Path] = None, umbral: float = P2_UMBRAL
+    df: pd.DataFrame, ruta_modelo: Optional[Path] = None, umbral: float = 0.5
 ) -> pd.DataFrame:
     """Retorna una copia del DataFrame anexando las columnas predictivas."""
     df_out = df.copy()
@@ -77,13 +82,16 @@ def main(
         None,
         "--input",
         "-i",
-        help="Ruta al archivo Parquet o CSV con features de P2. Si se omite, usa una muestra de validación.",
+        help="Ruta al archivo Parquet con features de P2. Si se omite, usa una muestra de validación.",
     ),
     output_path: Optional[Path] = typer.Option(
-        None, "--output", "-o", help="Ruta para guardar el archivo con predicciones."
+        None, "--output", "-o", help="Ruta para guardar el archivo Parquet con predicciones."
     ),
     umbral: float = typer.Option(
-        P2_UMBRAL, "--umbral", "-u", help="Umbral de decisión para clasificar riesgo (0.0 a 1.0)."
+        0.5,
+        "--umbral",
+        "-u",
+        help="Umbral de decisión para clasificar riesgo (0.0 a 1.0).",
     ),
 ):
     """Ejecuta inferencia de riesgo de desbalance (P2) desde la terminal."""
@@ -95,10 +103,7 @@ def main(
         else:
             input_path = Path(input_path)
             logger.info(f"Cargando datos para inferencia desde {input_path}...")
-            if input_path.suffix == ".parquet":
-                df = pd.read_parquet(input_path)
-            else:
-                df = pd.read_csv(input_path)
+            df = pd.read_parquet(input_path)
 
         logger.info(f"Generando predicciones de riesgo con umbral {umbral:.2f}...")
         resultado = generar_reporte_inferencia(df, umbral=umbral)
@@ -114,16 +119,19 @@ def main(
         if output_path:
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            if output_path.suffix == ".parquet":
-                resultado.to_parquet(output_path, index=False)
-            else:
-                resultado.to_csv(output_path, index=False)
-            logger.info(f"Predicciones guardadas exitosamente en {output_path}")
+            resultado.to_parquet(output_path, index=False)
+            logger.info(f"Predicciones guardadas exitosamente en Parquet: {output_path}")
         else:
             cols_mostrar = [
-                c for c in [
-                    "estacion_id", "hora", "pred_naive_persistencia", "prob_riesgo", "pred_riesgo"
-                ] if c in resultado.columns
+                c
+                for c in [
+                    "estacion_id",
+                    "hora",
+                    "pred_naive_persistencia",
+                    "prob_riesgo",
+                    "pred_riesgo",
+                ]
+                if c in resultado.columns
             ]
             logger.info("\n" + resultado[cols_mostrar].head(10).to_string(index=False))
 
