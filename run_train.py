@@ -75,6 +75,8 @@ VERSIONES_P2 = [
     ("logistic_sin_peso", "logistic", [f"umbral={P2_UMBRAL}", "class_weight=None", "max_iter=1000"], "train_p2"),
     ("logistic_umbral_sensible", "logistic", ["umbral=0.3", "class_weight=balanced", "max_iter=1000"], "train_p2"),
     ("logistic_search", "logistic_search", [], "train_p2"),
+    ("gbm", "gbm", [], "train_p2"),
+    ("gbm_search", "gbm_search", [], "train_p2"),
 ]
 
 VERSIONES_P3 = [
