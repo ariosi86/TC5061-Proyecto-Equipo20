@@ -10,7 +10,7 @@ commit de Git y versión de datos. Cada modelo registrado recibe una descripció
 
 Nombres de modelo en el Registry:
   - mibici-equipo20-p1-demanda    (P1: LightGBM Regresión Tweedie)
-  - mibici-equipo20-p2-riesgo     (P2: Regresión Logística sin peso, umbral 0.5)
+  - mibici-equipo20-p2-riesgo     (P2: HistGradientBoostingClassifier GBM, umbral 0.5)
   - mibici-equipo20-p3-grupos     (P3: KMeans funcional K=4)
 
 Uso:
@@ -57,33 +57,19 @@ MODELOS_A_REGISTRAR = [
         "pregunta": "P2",
         "descripcion": (
             "Modelo de produccion para P2 (riesgo de desbalance de estacion). "
-            "Regresion Logistica con class_weight=balanced y umbral de decision 0.5 "
-            "sobre las variables de riesgo P2. Seleccionado por mejor Test F1 "
-            "(0.833) y PR-AUC (0.842) frente a Regresion Logistica sin peso "
-            "(class_weight=None) y al umbral sensible (0.3)."
+            "HistGradientBoostingClassifier (Gradient Boosting) con valores por defecto "
+            "y umbral de decision 0.5 sobre las variables de riesgo P2. Seleccionado por "
+            "mejor Test F1 (0.865) y Test PR-AUC (0.942), superando al baseline de "
+            "persistencia (F1 0.833) y a Regresion Logistica (F1 0.832 / PR-AUC 0.806)."
         ),
         "metrica_test": "test_f1_score",
         "predicado": lambda tags, params, metrics: (
             tags.get("question") == "P2"
-            and "logistic" in str(params.get("modelo", "")).lower()
-            and str(params.get("class_weight", "")) in ("balanced", "None")
-            and str(params.get("umbral", "")) == "0.5"
-        ),
-    },
-    {
-        "name": "mibici-equipo20-p2-riesgo-gbm",
-        "pregunta": "P2",
-        "descripcion": (
-            "Modelo de produccion para P2 (riesgo de desbalance de estacion). "
-            "HistGradientBoostingClassifier (Gradient Boosting) con early stopping, "
-            "optimizado por PR-AUC en validacion via nested runs. "
-            "Variables de riesgo P2. Seleccionado por mejor Test PR-AUC y F1 "
-            "frente a Regresion Logistica."
-        ),
-        "metrica_test": "test_pr_auc",
-        "predicado": lambda tags, params, metrics: (
-            tags.get("question") == "P2"
-            and "histgradientboosting" in str(params.get("modelo", "")).lower()
+            and (
+                "histgradientboosting" in str(params.get("modelo", "")).lower()
+                or "gbm" in str(params.get("modelo", "")).lower()
+            )
+            and "gbm" in str(tags.get("version", "")).lower()
         ),
     },
     {
@@ -188,21 +174,33 @@ def registrar_modelo(client: MlflowClient, entrada: dict, run_info: dict) -> Non
     client.update_model_version(nombre, version, description=desc_version)
 
     # Promocionar a Produccion (alias champion y stage Production)
+    alias_ok = False
     try:
         client.set_registered_model_alias(nombre, "champion", str(version))
+        alias_ok = True
+        logger.info(f"Alias 'champion' asignado a version {version} de {nombre}.")
     except Exception as e:
         logger.warning(f"No se pudo asignar alias champion: {e}")
+
+    stage_ok = False
     try:
         client.transition_model_version_stage(
             name=nombre, version=version, stage="Production"
         )
+        stage_ok = True
     except Exception as e:
         logger.warning(f"No se pudo transicionar a stage Production: {e}")
 
-    logger.success(
-        f"{nombre} version {version} registrado y promovido a Production/champion "
-        f"(run_origen={run_id}, commit={run_info['commit']}, datos_version={run_info['datos_version']})"
-    )
+    if alias_ok or stage_ok:
+        logger.success(
+            f"{nombre} version {version} registrado y promovido a Production/champion "
+            f"(run_origen={run_id}, commit={run_info['commit']}, datos_version={run_info['datos_version']})"
+        )
+    else:
+        logger.error(
+            f"{nombre} version {version} registrado pero NO se pudo promover a Production/champion. "
+            f"Revisar permisos de MLflow Model Registry (run_origen={run_id})."
+        )
 
 
 def main() -> None:

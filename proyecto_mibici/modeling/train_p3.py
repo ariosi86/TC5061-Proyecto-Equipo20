@@ -167,7 +167,7 @@ def main(
         tags_busqueda = {**tags_base, "question": "P3", "model_family": "kmeans", "stage_of_work": "search"}
         resultados = []
 
-        with mlflow.start_run(run_name="p3-kmeans-search"):
+        with mlflow.start_run(run_name="p3-kmeans-search") as padre:
             tracker.log_params_nuevos({
                 **params_base,
                 "algoritmo": "KMeans",
@@ -196,6 +196,57 @@ def main(
             mlflow.log_param("mejor_k", mejor["k"])
             mlflow.log_metric("mejor_validation_silhouette", mejor["validation_silhouette"])
             logger.success(f"Mejor K en validación: {mejor['k']} (silhouette {mejor['validation_silhouette']:.3f})")
+            id_padre = padre.info.run_id
+
+        # Registrar el modelo final del mejor K como candidato con todos los artefactos
+        mejor_k = mejor["k"]
+        modelo_final = ClusterKMeansP3(
+            n_clusters=mejor_k, n_init=n_init, random_state=RANDOM_SEED
+        )
+        modelo_final.fit(perfil_train[P3_VARIABLES])
+
+        pred_train_k = modelo_final.labels_
+        pred_test_k = modelo_final.predict(perfil_test[P3_VARIABLES])
+        pred_val_k = modelo_final.predict(perfil_val[P3_VARIABLES])
+
+        m_k_train = evaluar_metricas_clustering(X_train_eval, pred_train_k, "Train")
+        m_k_test = evaluar_metricas_clustering(X_test_eval, pred_test_k, "Test")
+        m_k_val = evaluar_metricas_clustering(X_val_eval, pred_val_k, "Validación")
+
+        perfil_grupos = perfil_train[P3_VARIABLES].assign(grupo=pred_train_k)
+        resumen_grupos = perfil_grupos.groupby("grupo").mean().round(2)
+        resumen_grupos["n_estaciones"] = perfil_grupos["grupo"].value_counts()
+
+        etiqueta = f"kmeans_k{mejor_k}"
+        fig_mapa_kmeans = graficar_mapa_grupos(
+            perfil_train,
+            pred_train_k,
+            df_stations,
+            f"Grupos de Estaciones MiBici (KMeans K={mejor_k})",
+        )
+
+        estimador_pipeline = getattr(modelo_final, "pipeline_", getattr(modelo_final, "pipeline", None))
+
+        tracker.registrar_run(
+            run_name=f"p3-kmeans-k{mejor_k}_tuned",
+            params={**params_base, "algoritmo": "KMeans", "n_clusters": mejor_k, "n_init": n_init},
+            tags={
+                **tags_base,
+                "version": f"v1_kmeans_k{mejor_k}",
+                "question": "P3",
+                "model_family": "kmeans",
+                "stage_of_work": "candidate",
+                "search_run_id": id_padre,
+            },
+            tabla=pd.DataFrame([m_k_train, m_k_val, m_k_test]),
+            tabla_est=resumen_grupos.reset_index(),
+            modelo=estimador_pipeline,
+            X_ejemplo=perfil_train[P3_VARIABLES].head(5),
+            figuras={f"mapa_{etiqueta}": fig_mapa_kmeans},
+            df_train=perfil_train[P3_VARIABLES],
+            ruta_entrenamiento=str(TRIPS_TRAIN_PATH),
+            nested=True,
+        )
         return
 
     # -------------------------------------------------------------
