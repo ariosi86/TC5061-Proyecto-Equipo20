@@ -185,8 +185,7 @@ P2_VARIABLES = [
     "acumulado_relativo",
     "balance_ult_3h_relativo", 
     "riesgo_vacia", 
-    "riesgo_llena", 
-    "en_riesgo",
+    "riesgo_llena",
 ]
 P2_OBJETIVO = "en_riesgo_siguiente"
 

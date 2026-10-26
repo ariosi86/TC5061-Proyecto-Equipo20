@@ -277,6 +277,9 @@ class MLFlowTracker:
                             artifact_path="model",
                             signature=signature,
                             input_example=X_ejemplo,
+                            skops_trusted_types=[
+                                "sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor"
+                            ],
                             **kwargs_modelo,
                         )
                 except Exception as e:
