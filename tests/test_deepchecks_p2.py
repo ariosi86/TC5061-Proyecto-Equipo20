@@ -79,8 +79,12 @@ def como_dataset(df, columnas_extra=()):
 def guardar_y_revisar(resultado, nombre_archivo):
     """Guarda el reporte HTML y devuelve la lista de condiciones que no se cumplieron."""
     CARPETA_REPORTES.mkdir(parents=True, exist_ok=True)
+    ruta = CARPETA_REPORTES / nombre_archivo
+    # DeepChecks no sobrescribe: si el archivo existe crea "nombre (1).html". Se borra antes
+    # para que siempre quede un solo reporte, el de la última corrida.
+    ruta.unlink(missing_ok=True)
     # as_widget=False: HTML estático, sin depender de los widgets de Jupyter
-    resultado.save_as_html(str(CARPETA_REPORTES / nombre_archivo), as_widget=False)
+    resultado.save_as_html(str(ruta), as_widget=False)
     fallas = []
     for chequeo in resultado.results:
         if not hasattr(chequeo, "conditions_results"):          # el chequeo no pudo correr
@@ -99,7 +103,8 @@ def test_integridad_del_dataset_p2(serie_p2):
     # Corre sobre el dataset completo (los tres conjuntos)
     suite = Suite(
         "Integridad del dataset de P2",
-        PercentOfNulls().add_condition_percent_of_nulls_not_greater_than(0),
+        # n_samples alto: revisar las 4.8 M de filas (por defecto solo toma una muestra de 100 mil)
+        PercentOfNulls(n_samples=10_000_000).add_condition_percent_of_nulls_not_greater_than(0),
         MixedNulls().add_condition_different_nulls_less_equal_to(1),
         MixedDataTypes().add_condition_rare_type_ratio_not_in_range(),
         IsSingleValue().add_condition_not_single_value(),
