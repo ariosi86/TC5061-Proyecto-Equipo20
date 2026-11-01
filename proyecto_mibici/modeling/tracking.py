@@ -6,7 +6,7 @@ Módulo de integración defensiva con MLflow Tracking convertido en clase orient
 
 import hashlib
 import os
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
 
 from loguru import logger
@@ -76,10 +76,10 @@ class MLFlowTracker:
         try:
             h = subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], cwd=PROJ_ROOT, stderr=subprocess.DEVNULL
-            ).decode().strip()
+            ).decode().strip()  # nosec B603,B607
             sucio = subprocess.check_output(
                 ["git", "status", "--porcelain"], cwd=PROJ_ROOT
-            ).decode().strip() != ""
+            ).decode().strip() != ""  # nosec B603,B607
             return h[:10] + ("-dirty" if sucio else "")
         except Exception:
             return "no_disponible"
@@ -218,8 +218,8 @@ class MLFlowTracker:
         if not nested:
             try:
                 mlflow.end_run()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(f"No se pudo terminar el run previo de MLflow: {exc}")
 
         with mlflow.start_run(run_name=run_name, nested=nested) as run:
             self.log_params_nuevos(params)
