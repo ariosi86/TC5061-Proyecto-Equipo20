@@ -11,7 +11,7 @@ Ejecuta:
 Ejecución: python -m proyecto_mibici.pipeline
 """
 
-import subprocess
+import subprocess  # nosec B404
 import sys
 import tempfile
 import time
@@ -159,7 +159,7 @@ def ejecutar_suite_pytest():
     tests_dir = PROJ_ROOT / "proyecto_mibici" / "tests"
     if tests_dir.exists():
         logger.info(f"Ejecutando suite de pruebas automatizadas en {tests_dir}...")
-        resultado = subprocess.run(
+        resultado = subprocess.run(  # nosec B603
             [sys.executable, "-m", "pytest", str(tests_dir), "-v"],
             cwd=PROJ_ROOT,
         )
