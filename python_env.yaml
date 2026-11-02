@@ -1,9 +1,9 @@
 python: "3.10"
 dependencies:
   - numpy>=1.26.4
-  - pandas>=2.2.2,<3.0.0
+  - pandas>=2.2.2
   - pyarrow>=17.0.0
-  - scikit-learn>=1.5.1
+  - scikit-learn>=1.5.1,<1.6
   - mlflow>=2.15.0
   - lightgbm>=4.7.0
   - matplotlib>=3.9.0
@@ -17,4 +17,9 @@ dependencies:
   - mkdocs>=1.6.0
   - pytest>=7.4.0
   - ipykernel>=6.29.0
+  - bandit>=1.9.4
+  - pip-audit>=2.10.1
+  - deepchecks>=0.19.1
+  - setuptools>=80.0.0
+  - packaging>=26.3
   - -e .
