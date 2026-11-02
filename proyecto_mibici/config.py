@@ -29,6 +29,9 @@ TRIPS_PROCESSED_PATH = PROCESSED_DATA_DIR / "trips.parquet"
 TRIPS_TRAIN_PATH = PROCESSED_DATA_DIR / "train" / "trips_train_2025.parquet"
 TRIPS_TEST_PATH = PROCESSED_DATA_DIR / "test" / "trips_test_2026_04_09.parquet"
 
+# Ruta al parquet de la tabla de modelado de P1 (datos reales para tests de DeepChecks)
+P1_DATASET_PARQUET = INTERIM_DATA_DIR / "p1_modelado.parquet"
+
 # ==========================================
 # 2. PARÁMETROS GLOBALES Y TRACKING
 # ==========================================

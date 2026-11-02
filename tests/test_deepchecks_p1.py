@@ -33,7 +33,7 @@ try:
 except Exception as e:  # no instalado o incompatible con las versiones del entorno
     pytest.skip(f"DeepChecks no disponible en este entorno: {e}", allow_module_level=True)
 
-from proyecto_mibici.config import P1_FEATURES_V2, P1_TARGET
+from proyecto_mibici.config import P1_DATASET_PARQUET, P1_FEATURES_V2, P1_TARGET
 
 # Umbrales: son decisiones nuestras, ajustarlas con los datos reales y justificarlas en el README.
 MAX_DRIFT_FEATURES = 0.2
@@ -46,9 +46,9 @@ FEATURES_DRIFT = ["lag_1h", "lag_24h", "lag_168h", "rolling_3h", "rolling_168h"]
 
 @pytest.fixture(scope="module")
 def df_real():
-    if not os.environ.get("P1_DATASET_PARQUET"):
-        pytest.skip("Define P1_DATASET_PARQUET con la ruta del parquet de la tabla de modelado de P1.")
-    return cargar_df_p1()
+    if not P1_DATASET_PARQUET.exists():
+        pytest.skip(f"No existe el parquet de modelado: {P1_DATASET_PARQUET}")
+    return cargar_df_p1(ruta_parquet=str(P1_DATASET_PARQUET))
 
 
 @pytest.fixture(scope="module")
