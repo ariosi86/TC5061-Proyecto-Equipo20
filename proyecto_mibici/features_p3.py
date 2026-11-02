@@ -13,6 +13,8 @@ from proyecto_mibici.config import (
     P3_MIN_VIAJES_ESTACION,
 )
 
+RANGOS_HORARIOS = ["madrugada", "manana", "mediodia", "tarde", "noche"]
+
 
 class LimpiadorPerfilP3(BaseEstimator, TransformerMixin):
     """Filtra viajes con duraciones válidas y construye el vector de características funcionales."""
@@ -40,7 +42,7 @@ class LimpiadorPerfilP3(BaseEstimator, TransformerMixin):
                 hora,
                 bins=[0, 6, 10, 16, 20, 24],
                 right=False,
-                labels=["madrugada", "manana", "mediodia", "tarde", "noche"],
+                labels=RANGOS_HORARIOS,
             ).astype(str),
             fin_de_semana=df_viajes_limpios["inicio_del_viaje"].dt.dayofweek >= 5,
         )
@@ -52,6 +54,7 @@ class LimpiadorPerfilP3(BaseEstimator, TransformerMixin):
 
         perfil = (
             pd.crosstab(df["origen_id"], df["rango_horario"], normalize="index")
+            .reindex(columns=RANGOS_HORARIOS, fill_value=0)
             .add_prefix("pct_")
             .rename_axis(columns=None)
         )

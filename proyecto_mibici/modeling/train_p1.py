@@ -17,7 +17,7 @@ import time
 import lightgbm as lgb
 from loguru import logger
 from sklearn.metrics import mean_absolute_error, root_mean_squared_error
-
+import joblib
 
 from proyecto_mibici.config import (
     MLFLOW_EXPERIMENT_NAME,
@@ -237,6 +237,10 @@ def main(
         m_val = evaluar_metricas_regresion(y_val, pred_val, "Validación")
         m_test = evaluar_metricas_regresion(y_test, pred_test, "Test")
         imprimir_metricas_modelo(nombre, m_train, m_val, m_test)
+
+        ruta_champion = MODELS_DIR / "p1_champion.pkl"
+        joblib.dump(modelo, ruta_champion)
+        logger.success(f"Modelo champion guardado localmente en: {ruta_champion}")
 
         tracker.registrar_run(
             run_name=f"P1_{nombre}",

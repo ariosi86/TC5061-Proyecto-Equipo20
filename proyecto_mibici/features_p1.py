@@ -34,7 +34,7 @@ class LimpiadorFiltroEstacionesP1(BaseEstimator, TransformerMixin):
             last_hour=("hour_window", "max"),
             observed_hours=("hour_window", "nunique"),
         )
-        expected = ((cov["last_hour"] - cov["first_hour"]) / pd.Timedelta(hours=1)).astype(int) + 1
+        expected = ((cov["last_hour"] - cov["first_hour"]).dt.total_seconds() / 3600).astype("int64") + 1
         pct_vacias = (expected - cov["observed_hours"]) / expected * 100
 
         validas = pct_vacias[pct_vacias <= self.max_pct_vacias].index
@@ -43,7 +43,7 @@ class LimpiadorFiltroEstacionesP1(BaseEstimator, TransformerMixin):
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         df_clean = X.drop_duplicates().copy()
-        assert df_clean["viaje_id"].is_unique, "Hay viaje_id repetidos con datos distintos."
+        assert df_clean["viaje_id"].is_unique, "Hay viaje_id repetidos con datos distintos."  # nosec B101
         if self.estaciones_validas_ is not None:
             return df_clean[df_clean["origen_id"].isin(self.estaciones_validas_)].reset_index(drop=True)
         return df_clean.reset_index(drop=True)
@@ -92,11 +92,11 @@ class GeneradorDemandaLagsP1(BaseEstimator, TransformerMixin):
 
         df_out["target_next_hour"] = por_estacion.shift(-1)
         next_hour = df_out.groupby("origen_id")["hour_window"].shift(-1)
-        valid_next_hour = next_hour == df_out["hour_window"] + pd.Timedelta(hours=1)
+        valid_next_hour = next_hour == df_out["hour_window"] + pd.to_timedelta(1, unit="h")
         df_out.loc[~valid_next_hour, "target_next_hour"] = np.nan
 
         # Calendario y variables cíclicas
-        df_out["target_hour"] = df_out["hour_window"] + pd.Timedelta(hours=1)
+        df_out["target_hour"] = df_out["hour_window"] + pd.to_timedelta(1, unit="h")
         df_out["target_hour_of_day"] = df_out["target_hour"].dt.hour
         df_out["target_dayofweek"] = df_out["target_hour"].dt.dayofweek
         df_out["target_is_weekend"] = df_out["target_dayofweek"].isin([5, 6]).astype(int)
