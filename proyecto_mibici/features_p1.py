@@ -5,11 +5,13 @@ Ingeniería de características para P1: Demanda Horaria (Regresión).
 """
 
 from typing import Optional, Set, Tuple
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from proyecto_mibici.config import (
+    INTERIM_DATA_DIR,
     P1_MAX_PCT_VACIAS,
     STATIONS_PROCESSED_PATH,
     TRIPS_PROCESSED_PATH,
@@ -116,4 +118,9 @@ def construir_dataset_p1() -> Tuple[pd.DataFrame, pd.DataFrame]:
     trips_filtrados = limpiador.transform(df_trips)
     generador = GeneradorDemandaLagsP1().fit(trips_filtrados)
     df_p1 = generador.transform(trips_filtrados)
+
+    # Persistir tabla de modelado para pruebas de datos reales
+    INTERIM_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    df_p1.to_parquet(INTERIM_DATA_DIR / "p1_modelado.parquet", index=False)
+
     return df_p1, df_stations

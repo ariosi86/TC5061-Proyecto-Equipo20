@@ -14,7 +14,7 @@ from pathlib import Path
 import itertools
 import time
 import os
-import subprocess
+import subprocess  # nosec B404
 import sys
 
 import joblib
@@ -87,7 +87,7 @@ def _ejecutar(cmd: list[str], etiqueta: str) -> None:
     typer.echo(f"  $ {' '.join(cmd)}")
     env = os.environ.copy()
     env.setdefault("MLFLOW_TRACKING_URI", URI_MLFLOW_TRACKING)
-    subprocess.run(cmd, check=True, env=env)
+    subprocess.run(cmd, check=True, env=env)  # nosec B603
 
 
 @app.command()
