@@ -1,0 +1,28 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Opción CI/CD: descargar el código de este repositorio desde GitHub (público)
+# ============================================================================
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --branch main https://github.com/ariosi86/pruebasEquipo20.git /tmp/repo && \
+    cp -r /tmp/repo/* /app/ && \
+    rm -rf /tmp/repo
+# ============================================================================
+
+#COPY . .
+
+COPY docker/prep/entrypoint.sh /usr/local/bin/prep-entrypoint.sh
+RUN chmod +x /usr/local/bin/prep-entrypoint.sh
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+CMD ["sh", "/usr/local/bin/prep-entrypoint.sh"]

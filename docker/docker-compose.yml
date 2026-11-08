@@ -1,0 +1,99 @@
+services:
+  mlflow:
+    build:
+      context: ..
+      dockerfile: docker/mlflow/Containerfile
+    container_name: mlflow
+    ports:
+      - "5001:5000"
+    volumes:
+      - mlruns:/app/mlruns
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    networks:
+      - mibici-net
+
+  prep:
+    build:
+      context: ..
+      dockerfile: docker/prep/Containerfile
+    container_name: prep
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - PYTHONPATH=/app
+    working_dir: /app
+    volumes:
+      - mlruns:/app/mlruns
+    networks:
+      - mibici-net
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  api-p1:
+    build:
+      context: ..
+      dockerfile: docker/api/Containerfile
+    container_name: api-p1
+    ports:
+      - "8001:8000"
+    environment:
+      - PREGUNTA=p1
+      - MODELO_REGISTRY=mibici-equipo20-p1-demanda@champion
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    networks:
+      - mibici-net
+    depends_on:
+      prep:
+        condition: service_completed_successfully
+    volumes:
+      - mlruns:/app/mlruns
+
+  api-p2:
+    build:
+      context: ..
+      dockerfile: docker/api/Containerfile
+    container_name: api-p2
+    ports:
+      - "8002:8000"
+    environment:
+      - PREGUNTA=p2
+      - MODELO_REGISTRY=mibici-equipo20-p2-riesgo@champion
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    networks:
+      - mibici-net
+    depends_on:
+      prep:
+        condition: service_completed_successfully
+    volumes:
+      - mlruns:/app/mlruns
+
+  api-p3:
+    build:
+      context: ..
+      dockerfile: docker/api/Containerfile
+    container_name: api-p3
+    ports:
+      - "8003:8000"
+    environment:
+      - PREGUNTA=p3
+      - MODELO_REGISTRY=mibici-equipo20-p3-grupos@champion
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    networks:
+      - mibici-net
+    depends_on:
+      prep:
+        condition: service_completed_successfully
+    volumes:
+      - mlruns:/app/mlruns
+
+networks:
+  mibici-net:
+    driver: bridge
+
+volumes:
+  mlruns:

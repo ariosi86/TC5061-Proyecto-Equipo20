@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -38,7 +39,7 @@ P1_DATASET_PARQUET = INTERIM_DATA_DIR / "p1_modelado.parquet"
 RANDOM_SEED = 42
 MLFLOW_EXPERIMENT_NAME = "mibici-equipo20"
 
-URI_MLFLOW_TRACKING = "http://127.0.0.1:5000"
+URI_MLFLOW_TRACKING = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
 # ==========================================
 # 3. FUENTES Y ENLACES DE DESCARGA DIRECTA
@@ -59,7 +60,7 @@ DEFAULT_HEADERS = {
 
 DATA_URLS = {
     # Nomenclatura más reciente
-    "stations": f"{MIBICI_HOST}/site/assets/files/1118/nomenclatura_2026_09.csv",
+    "stations": f"{MIBICI_HOST}/site/assets/files/1118/nomenclatura_2026_10.csv",
     
     # Año 2025 completo (12 meses cerrados)
    
