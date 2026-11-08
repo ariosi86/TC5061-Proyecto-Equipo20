@@ -1179,4 +1179,21 @@ Las capturas de evidencia por componente se encuentran en `docs/images/`:
 ---
 # Entrega 4 Empaquetar modelo del proyecto como API REST en contenedor Docker
 
-Revisar [documentación de contenedores](./documentacion_contenedores.md).
+La implementación de API se ubica en la carpeta `docker/api` de la raíz de la siguiente manera:
+
+```text
+docker/
+├── .env.example
+├── docker-compose.yml
+└── api/
+    ├── app.py              # Servicio principal FastAPI y endpoints (/predict, /health)
+    ├── Containerfile       # Configuración de la imagen Docker para la API
+    ├── model_loader.py     # Carga y deserialización de modelos desde MLflow
+    ├── predict_p1.py       # Lógica de inferencia para P1
+    ├── predict_p2.py       # Lógica de inferencia para P2
+    ├── predict_p3.py       # Lógica de inferencia para P3
+    ├── schemas.py          # Esquemas Pydantic de entrada/salida y transformación de datos
+    └── requirements.txt    # Dependencias de Python para la API
+```
+
+Revisar [documentación de contenedores](./documentacion_contenedores.md) para obtener detalles de despliegue, variables de entorno y ejecución con Docker Compose.
