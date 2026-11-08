@@ -5,6 +5,7 @@ Módulo de integración defensiva con MLflow Tracking convertido en clase orient
 """
 
 import hashlib
+import joblib
 import os
 import subprocess  # nosec B404
 from pathlib import Path
@@ -15,6 +16,7 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd  
 from mlflow.models import infer_signature
+from mlflow.pyfunc import PythonModel
 try:
     from mlflow.data.pandas_dataset import from_df  # mlflow < 3
 except ImportError:  # mlflow >= 3
@@ -247,43 +249,36 @@ class MLFlowTracker:
                         signature = None
 
                 try:
-                    # Usar el sabor nativo de MLflow para LightGBM si corresponde
-                    if lgb is not None and isinstance(modelo, lgb.LGBMRegressor):
-                        if mlflow_lightgbm is not None:
-                            mlflow_lightgbm.log_model(
-                                lgb_model=modelo,
-                                artifact_path="model",
-                                signature=signature,
-                                input_example=X_ejemplo,
-                            )
-                        else:
-                            logger.warning("mlflow.lightgbm no disponible; usando mlflow.sklearn.log_model")
-                            kwargs_modelo = {}
-                            if serialization_format is not None:
-                                kwargs_modelo["serialization_format"] = serialization_format
-                            mlflow.sklearn.log_model(
-                                sk_model=modelo,
-                                artifact_path="model",
-                                signature=signature,
-                                input_example=X_ejemplo,
-                                **kwargs_modelo,
-                            )
-                    else:
-                        kwargs_modelo = {}
-                        if serialization_format is not None:
-                            kwargs_modelo["serialization_format"] = serialization_format
-                        mlflow.sklearn.log_model(
-                            sk_model=modelo,
-                            artifact_path="model",
-                            signature=signature,
-                            input_example=X_ejemplo,
-                            skops_trusted_types=[
-                                "sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor"
-                            ],
-                            **kwargs_modelo,
-                        )
+                    import tempfile
+                    import os as _os
+                    import joblib
+
+                    class _MiModeloPyFunc(PythonModel):
+                        def load_context(self, context):
+                            import joblib as _joblib
+                            self.modelo = _joblib.load(context.artifacts["modelo"])
+
+                        def predict(self, context, model_input):
+                            return self.modelo.predict(model_input)
+
+                    tmpdir = tempfile.mkdtemp()
+                    modelo_path = _os.path.join(tmpdir, "modelo.pkl")
+                    joblib.dump(modelo, modelo_path)
+
+                    artifacts = {"modelo": modelo_path}
+
+                    mlflow.pyfunc.log_model(
+                        artifact_path="model",
+                        python_model=_MiModeloPyFunc(),
+                        artifacts=artifacts,
+                        signature=signature,
+                        input_example=X_ejemplo,
+                    )
+                    logger.info(f"Modelo guardado vía pyfunc.log_model en {modelo_path}")
                 except Exception as e:
-                    logger.warning(f"No se pudo loggear el modelo en MLflow: {e}")
+                    import traceback
+                    logger.error(f"No se pudo guardar el modelo en MLflow:")
+                    logger.error(traceback.format_exc())
 
             if figuras:
                 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
