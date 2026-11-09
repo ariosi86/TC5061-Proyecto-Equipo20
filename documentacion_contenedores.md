@@ -435,7 +435,46 @@ Ejemplo de respuesta ante una entrada inválida (caso 2):
 ```
 
 ---
-## 9. Pruebas realizadas (P3)
+## 9. Pruebas realizadas (P2)
+
+Pruebas contra `http://localhost:8002/predict` con los contenedores `mlflow`, `prep` y `api-p2`
+levantados con Podman (mismas opciones que en `docker-compose.yml`). Parten de la petición
+válida de la sección 4.2 y cambian un solo dato.
+
+### 9.1 Petición válida desde el contenedor
+
+![API prueba1 P2](docs/images/API_prueba1_P2.png)
+
+### 9.2 Validación de entradas
+
+| # | Caso | Cambio al JSON válido | Código esperado | Evidencia |
+|---|------|-----------------------|-----------------|-----------|
+| 1 | Campo faltante | quitar `capacidad` | 422 | [Ver captura](docs/images/API_prueba2_P2.png) |
+| 2 | Valor fuera de rango | `"hora_del_dia": 25` | 422 | [Ver captura](docs/images/API_prueba3_P2.png) |
+| 3 | Variables contradictorias | `"balance_acumulado_dia": -12`, sin ajustar `acumulado_relativo` ni `riesgo_vacia` | 422 | [Ver captura](docs/images/API_prueba4_P2.png) |
+| 4 | Tipo incorrecto | `"capacidad": "abc"` | 422 | [Ver captura](docs/images/API_prueba5_P2.png) |
+| 5 | Campo desconocido | agregar `"campo_extra": 1` | 422 | [Ver captura](docs/images/API_prueba6_P2.png) |
+| 6 | Valor `NaN` | `"acumulado_relativo": NaN` | 422 | [Ver captura](docs/images/API_prueba7_P2.png) |
+| 7 | Capacidad en cero | `"capacidad": 0` | 422 | [Ver captura](docs/images/API_prueba8_P2.png) |
+
+Ejemplo de respuesta ante una entrada inválida (caso 3). La regla de coherencia revisa que las
+variables derivadas correspondan a `balance_acumulado_dia` y `capacidad`, igual que en
+`features_p2.py`; por eso `loc` señala el cuerpo completo y el mensaje enumera cada problema:
+
+```json
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": [
+        "body"
+      ],
+      "msg": "Value error, acumulado_relativo=-0.45 debería ser balance_acumulado_dia / capacidad = -0.6000; riesgo_vacia=0 no corresponde a balance_acumulado_dia=-12 con capacidad=20"
+    }
+  ]
+}
+```
+
 ---
 
 ## 10. Pruebas realizadas (P3)
