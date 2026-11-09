@@ -441,6 +441,15 @@ Pruebas contra `http://localhost:8002/predict` con los contenedores `mlflow`, `p
 levantados con Podman (mismas opciones que en `docker-compose.yml`). Parten de la petición
 válida de la sección 4.2 y cambian un solo dato.
 
+Contenedores en ejecución (`podman ps`) y registro de las peticiones que atendió `api-p2`
+(`podman logs api-p2`): el `200` de la petición válida y los siete `422` de la tabla 9.2.
+
+![Podman P2](docs/images/Podman_P2.png)
+
+### 9.1 Petición válida desde el contenedor
+
+
+
 ### 9.1 Petición válida desde el contenedor
 
 ![API prueba1 P2](docs/images/API_prueba1_P2.png)
