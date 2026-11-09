@@ -246,34 +246,37 @@ curl http://localhost:8002/health
 
 **Parámetros de entrada (`POST /predict`):**
 
+Son las 11 variables del modelo, calculadas igual que en `features_p2.py`. La API rechaza con
+`422` las combinaciones contradictorias entre ellas (ver la sección 9).
+
 | Parámetro | Tipo | Rango | Descripción | Ejemplo |
 |-----------|------|-------|-------------|---------|
-| `hora_del_dia` | int | 0–23 | Hora del día | `14` |
-| `dia_semana` | int | 0–6 | Día de la semana | `2` |
-| `fin_de_semana` | int | 0/1 | 1 si es fin de semana | `0` |
-| `capacidad` | float | > 0 | Capacidad de la estación | `30` |
-| `salidas` | float | ≥ 0 | Salidas acumuladas | `45` |
-| `llegadas` | float | ≥ 0 | Llegadas acumuladas | `40` |
-| `balance_acumulado_dia` | float | — | Balance acumulado del día | `5` |
-| `acumulado_relativo` | float | — | Acumulado relativo | `0.2` |
-| `balance_ult_3h_relativo` | float | — | Balance últimas 3h relativo | `0.1` |
-| `riesgo_vacia` | int | 0/1 | Riesgo de vacía | `0` |
-| `riesgo_llena` | int | 0/1 | Riesgo de llena | `0` |
+| `hora_del_dia` | int | 0–23 | Hora observada; se predice el riesgo de la hora siguiente | `8` |
+| `dia_semana` | int | 0–6 | Día de la semana (lunes = 0) | `2` |
+| `fin_de_semana` | int | 0/1 | 1 si `dia_semana` es 5 o 6 | `0` |
+| `capacidad` | int | > 0 | Anclajes de la estación | `20` |
+| `salidas` | int | ≥ 0 | Bicicletas que salieron en la hora observada | `6` |
+| `llegadas` | int | ≥ 0 | Bicicletas que llegaron en la hora observada | `2` |
+| `balance_acumulado_dia` | int | — | Llegadas menos salidas desde las 3:00 | `-9` |
+| `acumulado_relativo` | float | — | `balance_acumulado_dia / capacidad` | `-0.45` |
+| `balance_ult_3h_relativo` | float | — | Balance de las últimas 3 h (incluida la observada) / `capacidad` | `-0.35` |
+| `riesgo_vacia` | int | 0/1 | 1 si `balance_acumulado_dia <= -0.5 × capacidad` | `0` |
+| `riesgo_llena` | int | 0/1 | 1 si `balance_acumulado_dia >= 0.5 × capacidad` | `0` |
 
 **Ejemplo de predicción P2:**
 ```bash
 curl -X POST http://localhost:8002/predict \
   -H "Content-Type: application/json" \
   -d '{
-    "hora_del_dia": 14,
+    "hora_del_dia": 8,
     "dia_semana": 2,
     "fin_de_semana": 0,
-    "capacidad": 30,
-    "salidas": 45,
-    "llegadas": 40,
-    "balance_acumulado_dia": 5,
-    "acumulado_relativo": 0.2,
-    "balance_ult_3h_relativo": 0.1,
+    "capacidad": 20,
+    "salidas": 6,
+    "llegadas": 2,
+    "balance_acumulado_dia": -9,
+    "acumulado_relativo": -0.45,
+    "balance_ult_3h_relativo": -0.35,
     "riesgo_vacia": 0,
     "riesgo_llena": 0
   }'
@@ -286,7 +289,7 @@ curl -X POST http://localhost:8002/predict \
   "modelo": "mibici-equipo20-p2-riesgo",
   "version": "1",
   "run_id": "...",
-  "prob_riesgo": 0.0526,
+  "prob_riesgo": 0.2911,
   "pred_riesgo": 0
 }
 ```
@@ -432,7 +435,46 @@ Ejemplo de respuesta ante una entrada inválida (caso 2):
 ```
 
 ---
-## 9. Pruebas realizadas (P3)
+## 9. Pruebas realizadas (P2)
+
+Pruebas contra `http://localhost:8002/predict` con los contenedores `mlflow`, `prep` y `api-p2`
+levantados con Podman (mismas opciones que en `docker-compose.yml`). Parten de la petición
+válida de la sección 4.2 y cambian un solo dato.
+
+### 9.1 Petición válida desde el contenedor
+
+![API prueba1 P2](docs/images/API_prueba1_P2.png)
+
+### 9.2 Validación de entradas
+
+| # | Caso | Cambio al JSON válido | Código esperado | Evidencia |
+|---|------|-----------------------|-----------------|-----------|
+| 1 | Campo faltante | quitar `capacidad` | 422 | [Ver captura](docs/images/API_prueba2_P2.png) |
+| 2 | Valor fuera de rango | `"hora_del_dia": 25` | 422 | [Ver captura](docs/images/API_prueba3_P2.png) |
+| 3 | Variables contradictorias | `"balance_acumulado_dia": -12`, sin ajustar `acumulado_relativo` ni `riesgo_vacia` | 422 | [Ver captura](docs/images/API_prueba4_P2.png) |
+| 4 | Tipo incorrecto | `"capacidad": "abc"` | 422 | [Ver captura](docs/images/API_prueba5_P2.png) |
+| 5 | Campo desconocido | agregar `"campo_extra": 1` | 422 | [Ver captura](docs/images/API_prueba6_P2.png) |
+| 6 | Valor `NaN` | `"acumulado_relativo": NaN` | 422 | [Ver captura](docs/images/API_prueba7_P2.png) |
+| 7 | Capacidad en cero | `"capacidad": 0` | 422 | [Ver captura](docs/images/API_prueba8_P2.png) |
+
+Ejemplo de respuesta ante una entrada inválida (caso 3). La regla de coherencia revisa que las
+variables derivadas correspondan a `balance_acumulado_dia` y `capacidad`, igual que en
+`features_p2.py`; por eso `loc` señala el cuerpo completo y el mensaje enumera cada problema:
+
+```json
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": [
+        "body"
+      ],
+      "msg": "Value error, acumulado_relativo=-0.45 debería ser balance_acumulado_dia / capacidad = -0.6000; riesgo_vacia=0 no corresponde a balance_acumulado_dia=-12 con capacidad=20"
+    }
+  ]
+}
+```
+
 ---
 
 ## 10. Pruebas realizadas (P3)
