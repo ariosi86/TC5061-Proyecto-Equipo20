@@ -246,34 +246,37 @@ curl http://localhost:8002/health
 
 **Parámetros de entrada (`POST /predict`):**
 
+Son las 11 variables del modelo, calculadas igual que en `features_p2.py`. La API rechaza con
+`422` las combinaciones contradictorias entre ellas (ver la sección 9).
+
 | Parámetro | Tipo | Rango | Descripción | Ejemplo |
 |-----------|------|-------|-------------|---------|
-| `hora_del_dia` | int | 0–23 | Hora del día | `14` |
-| `dia_semana` | int | 0–6 | Día de la semana | `2` |
-| `fin_de_semana` | int | 0/1 | 1 si es fin de semana | `0` |
-| `capacidad` | float | > 0 | Capacidad de la estación | `30` |
-| `salidas` | float | ≥ 0 | Salidas acumuladas | `45` |
-| `llegadas` | float | ≥ 0 | Llegadas acumuladas | `40` |
-| `balance_acumulado_dia` | float | — | Balance acumulado del día | `5` |
-| `acumulado_relativo` | float | — | Acumulado relativo | `0.2` |
-| `balance_ult_3h_relativo` | float | — | Balance últimas 3h relativo | `0.1` |
-| `riesgo_vacia` | int | 0/1 | Riesgo de vacía | `0` |
-| `riesgo_llena` | int | 0/1 | Riesgo de llena | `0` |
+| `hora_del_dia` | int | 0–23 | Hora observada; se predice el riesgo de la hora siguiente | `8` |
+| `dia_semana` | int | 0–6 | Día de la semana (lunes = 0) | `2` |
+| `fin_de_semana` | int | 0/1 | 1 si `dia_semana` es 5 o 6 | `0` |
+| `capacidad` | int | > 0 | Anclajes de la estación | `20` |
+| `salidas` | int | ≥ 0 | Bicicletas que salieron en la hora observada | `6` |
+| `llegadas` | int | ≥ 0 | Bicicletas que llegaron en la hora observada | `2` |
+| `balance_acumulado_dia` | int | — | Llegadas menos salidas desde las 3:00 | `-9` |
+| `acumulado_relativo` | float | — | `balance_acumulado_dia / capacidad` | `-0.45` |
+| `balance_ult_3h_relativo` | float | — | Balance de las últimas 3 h (incluida la observada) / `capacidad` | `-0.35` |
+| `riesgo_vacia` | int | 0/1 | 1 si `balance_acumulado_dia <= -0.5 × capacidad` | `0` |
+| `riesgo_llena` | int | 0/1 | 1 si `balance_acumulado_dia >= 0.5 × capacidad` | `0` |
 
 **Ejemplo de predicción P2:**
 ```bash
 curl -X POST http://localhost:8002/predict \
   -H "Content-Type: application/json" \
   -d '{
-    "hora_del_dia": 14,
+    "hora_del_dia": 8,
     "dia_semana": 2,
     "fin_de_semana": 0,
-    "capacidad": 30,
-    "salidas": 45,
-    "llegadas": 40,
-    "balance_acumulado_dia": 5,
-    "acumulado_relativo": 0.2,
-    "balance_ult_3h_relativo": 0.1,
+    "capacidad": 20,
+    "salidas": 6,
+    "llegadas": 2,
+    "balance_acumulado_dia": -9,
+    "acumulado_relativo": -0.45,
+    "balance_ult_3h_relativo": -0.35,
     "riesgo_vacia": 0,
     "riesgo_llena": 0
   }'
@@ -286,7 +289,7 @@ curl -X POST http://localhost:8002/predict \
   "modelo": "mibici-equipo20-p2-riesgo",
   "version": "1",
   "run_id": "...",
-  "prob_riesgo": 0.0526,
+  "prob_riesgo": 0.2911,
   "pred_riesgo": 0
 }
 ```
