@@ -1179,7 +1179,7 @@ Las capturas de evidencia por componente se encuentran en `docs/images/`:
 ---
 # Entrega 4 Empaquetar modelo del proyecto como API REST en contenedor Docker
 
-La implementación de API se ubica en la carpeta `docker/api` de la raíz de la siguiente manera:
+La implementación de la API se encuentra en la carpeta `docker/api`, organizada de la siguiente manera:
 
 ```text
 docker/
