@@ -41,10 +41,7 @@ La arquitectura del proyecto sigue la estructura estándar de **Cookiecutter Dat
 ├── references/                  <- Diccionarios de datos y manuales explicativos
 ├── reports/                     <- Tablas comparativas de métricas (.csv) y reportes generados
 │   └── figures/                 <- Gráficas exportadas para reportes
-│
 ├── tests/                       <- Suite de pruebas de integración y validación con pytest
-│   └── test_pipeline.py         <- Pruebas unitarias de artefactos, modelos y pipelines
-│
 └── proyecto_mibici/             <- Paquete principal de Python
     ├── __init__.py              <- Metadatos del módulo principal (__version__, __author__)
     ├── config.py                <- Rutas resueltas con pathlib, constantes, URLs y semillas
@@ -727,13 +724,6 @@ pytest tests/test_train_p2_p3.py -v          # métricas de clasificación y clu
 pytest tests/test_predict_p2_p3.py -v        # inferencia de riesgo y clustering (P2 y P3)
 ```
 
-> **Nota sobre `test_pipeline.py`:** esta prueba de integración verifica que existan los Parquets procesados (`data/processed/`), los modelos serializados (`models/*.pkl`) y los reportes generados (`reports/`). Si no se han generado todavía (por ejemplo, en un clon recién descargado), la prueba se **salta automáticamente** en lugar de fallar. Para ejecutarla, correr primero:
-> ```bash
-> python -m proyecto_mibici.dataset   # genera los Parquets de train y test
-> python run_train.py                 # entrena y guarda los 3 modelos
-> ```
-> y luego volver a lanzar `pytest -v`.
-
 ### Qué se prueba (P1: demanda horaria)
 
 | Archivo | Componente | Casos cubiertos |
@@ -835,7 +825,7 @@ Resultado esperado: todas las pruebas en verde (PASSED) al final.
 | `test_train_p2_p3.py` | 4 pruebas aprobadas |
 | `test_predict_p2_p3.py` | 6 pruebas aprobadas |
 
-**Resultado final del suite completo:** `152 passed, 3 skipped` (39.37s).
+**Resultado final del suite completo:** `150 passed, 1 skipped` (44.82s).
 
 Todas las pruebas se ejecutan correctamente.
 
@@ -1117,14 +1107,12 @@ El suite completo de pruebas se ejecuta con un solo comando desde la raíz del r
 pytest -v
 ```
 
-**Resultado obtenido:** `152 passed, 3 skipped` (39.37s).
+**Resultado obtenido:** `150 passed, 1 skipped` (44.82s).
 
-- **152 passed**: Todas las pruebas unitarias de P1, P2 y P3, incluidas las de reproducibilidad con semilla fija, los chequeos de DeepChecks sobre datos reales (P2 y P3), los chequeos sintéticos de DeepChecks de P1, las pruebas de `dataset.py` (ETL e integridad), las pruebas de la fachada `features.py`, y las pruebas de métricas e inferencia de P2 y P3.
-- **3 skipped**: Pruebas que requieren el modelo champion (`models/p1_champion.pkl`), eliminado del entorno local; se ejecutan cuando el modelo está presente.
+- **150 passed**: Todas las pruebas unitarias de P1, P2 y P3, incluidas las de reproducibilidad con semilla fija, los chequeos de DeepChecks sobre datos reales (P2 y P3), los chequeos sintéticos de DeepChecks de P1, las pruebas de `dataset.py` (ETL e integridad), las pruebas de la fachada `features.py`, y las pruebas de métricas e inferencia de P2 y P3.
+- **1 skipped**: Prueba que requiere el modelo champion (`models/p1_champion.pkl`), eliminado del entorno local; se ejecuta cuando el modelo está presente.
 
-![Suite completo - 152 pruebas aprobadas, 3 skipped](docs/images/suite_completo.webp)
-
-> **Variante `test_pipeline.py` (entrenamiento de modelo):** esta prueba de integración verifica el entrenamiento completo de modelos y la generación de artefactos. El suite completo reporta **155 pruebas** en total; de ellas, **3 pueden saltarse** si no existe el modelo champion entrenado (`models/p1_champion.pkl`). Es una prueba de entrenamiento de modelo: valida que los modelos se entrenan, serializan y cargan correctamente.
+![Suite completo - 150 pruebas aprobadas, 1 skipped](docs/images/suite_completo.webp)
 
 Las capturas de evidencia por componente se encuentran en `docs/images/`:
 

@@ -65,8 +65,9 @@ class DemandaLinealP1(BaseEstimator, RegressorMixin):
     Expone el atributo .pipeline con el paso 'scaler' requerido por pytest.
     """
 
-    def __init__(self, features: Optional[List[str]] = None):
+    def __init__(self, features: Optional[List[str]] = None, random_state: int = 42):
         self.features = features
+        self.random_state = random_state
         self.pipeline = Pipeline([
             ("scaler", StandardScaler()),
             ("regressor", LinearRegression()),

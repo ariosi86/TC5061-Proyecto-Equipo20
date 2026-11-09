@@ -11,6 +11,7 @@ import os
 import numpy as np
 import pandas as pd
 import pytest
+from pathlib import Path
 
 try:
     # IMPORTANTE: primero el módulo del script. Al importarse aplica los parches de compatibilidad
@@ -33,7 +34,7 @@ try:
 except Exception as e:  # no instalado o incompatible con las versiones del entorno
     pytest.skip(f"DeepChecks no disponible en este entorno: {e}", allow_module_level=True)
 
-from proyecto_mibici.config import P1_FEATURES_V2, P1_TARGET
+from proyecto_mibici.config import P1_DATASET_PARQUET, P1_FEATURES_V2, P1_TARGET
 
 # Umbrales: son decisiones nuestras, ajustarlas con los datos reales y justificarlas en el README.
 MAX_DRIFT_FEATURES = 0.2
@@ -44,11 +45,23 @@ FEATURES_DRIFT = ["lag_1h", "lag_24h", "lag_168h", "rolling_3h", "rolling_168h"]
 
 # ======================= A) DATOS REALES =======================
 
+RUTA_PARQUET_P1 = Path("data/interim/p1_modelado.parquet")
+
+
 @pytest.fixture(scope="module")
 def df_real():
-    if not os.environ.get("P1_DATASET_PARQUET"):
-        pytest.skip("Define P1_DATASET_PARQUET con la ruta del parquet de la tabla de modelado de P1.")
-    return cargar_df_p1()
+    ruta = Path(os.environ.get("P1_DATASET_PARQUET", RUTA_PARQUET_P1))
+    if ruta.exists():
+        return cargar_df_p1(str(ruta))
+
+    # No hay parquet: se reconstruye con el pipeline (tarda) y se guarda para la próxima vez.
+    try:
+        df = cargar_df_p1()          # sin ruta, llama a construir_dataset_p1()
+    except Exception as e:
+        pytest.skip(f"No existe {ruta} y no se pudo construir la tabla con construir_dataset_p1(): {e}")
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(ruta)
+    return df
 
 
 @pytest.fixture(scope="module")

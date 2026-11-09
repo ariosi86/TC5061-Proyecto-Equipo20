@@ -87,8 +87,13 @@ def test_champion_guardado_es_reproducible_con_sus_hiperparametros(datos_modelad
     if not hasattr(champion, "get_params"):
         pytest.skip("El champion guardado no es un estimador con get_params()")
     X, y = datos_modelado
-    p1 = np.clip(clone(champion).set_params(random_state=RANDOM_SEED).fit(X, y).predict(X), 0, None)
-    p2 = np.clip(clone(champion).set_params(random_state=RANDOM_SEED).fit(X, y).predict(X), 0, None)
+    # Solo inyectar random_state si el campeón lo acepta (p. ej. LightGBM).
+    # DemandaLinealP1 solo expone 'features', así que no se le puede pasar random_state.
+    params = champion.get_params(deep=False)
+    if "random_state" in params:
+        params["random_state"] = RANDOM_SEED
+    p1 = np.clip(clone(champion).set_params(**params).fit(X, y).predict(X), 0, None)
+    p2 = np.clip(clone(champion).set_params(**params).fit(X, y).predict(X), 0, None)
     np.testing.assert_array_equal(p1, p2)
     assert evaluar_metricas_regresion(y, p1, "Train") == evaluar_metricas_regresion(y, p2, "Train")
 
