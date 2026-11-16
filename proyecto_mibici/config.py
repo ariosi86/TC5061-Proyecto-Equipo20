@@ -33,6 +33,17 @@ TRIPS_TEST_PATH = PROCESSED_DATA_DIR / "test" / "trips_test_2026_04_09.parquet"
 # Ruta al parquet de la tabla de modelado de P1 (datos reales para tests de DeepChecks)
 P1_DATASET_PARQUET = INTERIM_DATA_DIR / "p1_modelado.parquet"
 
+#------------------------------------------
+# Nuevo experimento para test A/B y reentrenamiento de P1 (v2)
+#------------------------------------------
+MLFLOW_EXPERIMENT_MONITOREO = "mibici-equipo20-p1-monitoreo"
+# Experimento de monitoreo, reentrenamiento y A/B testing de P3
+MLFLOW_EXPERIMENT_MONITOREO_P3 = "mibici-equipo20-p3-monitoreo"
+
+# Nombre del proyecto en Evidently Platform para el monitoreo de drift
+EVIDENTLY_PROJECT_NAME = "proyecto_mibici_equipo20"
+
+
 # ==========================================
 # 2. PARÁMETROS GLOBALES Y TRACKING
 # ==========================================
@@ -88,7 +99,12 @@ DATA_URLS = {
     "2026-07": f"{MIBICI_HOST}/site/assets/files/129006/datos_abiertos_2026_07.csv",
     "2026-08": f"{MIBICI_HOST}/site/assets/files/130362/datos_abiertos_2026_08.csv",
     "2026-09": f"{MIBICI_HOST}/site/assets/files/131825/datos_abiertos_2026_09.csv",
-    
+
+#------------------------------------------------------------------
+#                Datos futuros 2026 (octubre 2026)
+#------------------------------------------------------------------
+    "2026-10": f"{MIBICI_HOST}/site/assets/files/133188/datos_abiertos_2026_10.csv",
+ 
     }
 }
 
@@ -115,6 +131,11 @@ P1_MAX_ITER_DEFAULT = 300
 P1_VAL_INICIO = "2026-01-01"
 P1_TEST_INICIO = "2026-05-01"
 P1_TEST_FIN = "2026-10-01"
+
+#------------------------------------------------
+# Periodo "actual" para reentrenamiento y test A/B
+#------------------------------------------------
+P1_ACTUAL_FIN = "2026-11-01"   # fin del periodo "actual" (octubre 2026)
 
 P1_FEATURES_V1 = [
     "lag_1h", "lag_24h", "lag_168h",
