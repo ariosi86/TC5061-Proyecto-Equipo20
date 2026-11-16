@@ -60,6 +60,7 @@ class MLFlowTracker:
     def __init__(self, tracking_uri: str = None, experiment_name: str = None):
         if tracking_uri:
             mlflow.set_tracking_uri(tracking_uri)
+        self.experiment_name = experiment_name or MLFLOW_EXPERIMENT_NAME
         if experiment_name:
             mlflow.set_experiment(experiment_name)
 
@@ -209,7 +210,7 @@ class MLFlowTracker:
             tags = {**tags, "question": params["pregunta"]}
 
         # Asegurar que usamos el experimento correcto
-        mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+        mlflow.set_experiment(self.experiment_name)  
 
         # Propagar tags de source (mlflow.source.type=PROJECT, etc.) del run activo
         source_tags = self._get_source_tags()
