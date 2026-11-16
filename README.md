@@ -1185,3 +1185,253 @@ docker/
 ```
 
 Revisar [documentación de contenedores](./documentacion_contenedores.md) para obtener detalles de despliegue, variables de entorno y ejecución con Docker Compose.
+
+---
+# Entrega 5 Monitoreo y reporte de drift en el proyecto
+
+Para garantizar la vigencia del modelo en producción, se implementó un flujo de monitoreo continuo, reentrenamiento y validación mediante A/B Testing comparando datos históricos de referencia (octubre 2025) contra datos recientes (octubre 2026).
+
+## Archivos generados y modificados
+
+```text
+
+└── proyecto_mibici/             
+    ├── config.py             <- Nuevo experimento para monitoring, descarga de Octubre 2026.
+    └── modeling/
+        ├── retrain_p1.py     <- Script para reentrenamiento para modelo candidato v2 (challenger).
+        └── tracking.py       <- Módulo de integración defensiva con MLflow Tracking.
+    └── monitoring/
+        ├── __init__.py        
+        ├── ab_test_p1.py     <- Script para evaluar champion vs challenger.
+        ├── drift_report.py   <- Script para generar reporte de Data Drift y Target Drift con Evidently AI.
+        └── umbral_ab_p1.py   <- Script para definir umbral para la evaluación de champion vs challenger.
+    └── reports/drift/        <- Almacena el reporte HTML generado por Evidently AI
+    └── reports/ab_test/      <- Almacena tablas csv de metricas y gráficas de evolución diaria
+```
+## Comandos de Ejecución
+
+Asegurarse de tener activo el servidor de tracking de MLflow (http://127.0.0.1:5000) antes de ejecutar el flujo desde la raíz del repositorio:
+
+### Instalación de Dependencias de Monitoreo
+
+Si aún no se tiene instalada las librerías de Evidently:
+
+```bash
+pip install -r requirements.txt
+# O directamente:
+pip install evidently
+```
+
+
+1. Generar reporte de Data Drift (Evidently AI):
+```bash
+python -m proyecto_mibici.monitoring.drift_report
+```
+
+
+2. Reentrenar modelo candidato (v2):
+```bash
+python -m proyecto_mibici.modeling.retrain_p1
+```
+
+3. Calcular umbral estadístico de mejora a partir de la variación mensual de v1:
+```bash
+python -m proyecto_mibici.monitoring.umbral_ab_p1
+```
+4. Calcula la variabilidad mensual natural del modelo vigente (v1 - Champion) entre mayo y octubre de 2026 para fijar de forma objetiva el umbral mínimo de mejora (--min-mejora-mae).
+
+Resultado obtenido: umbral 7.8
+
+5. Ejecutar evaluación A/B Test (v1 vs v2) con el umbral calibrado (7.8%):
+```bash
+python -m proyecto_mibici.monitoring.ab_test_p1 --min-mejora-mae 7.8
+```
+Ejecuta la evaluación comparativa entre v1 (champion) y v2 (challenger) sobre octubre 2026, aplicando validación bootstrap diaria y cuatro criterios de gobernanza antes de permitir cualquier promoción en el Model Registry.
+
+(Para habilitar la actualización automática de alias en el Model Registry en caso de aprobar todos los criterios, añadir la bandera --promover).
+
+## Resumen de Resultados y Gobernanza
+
+- Detección de Drift (Evidently AI): Se identificó Data Drift en el 66.67% de las variables (6/9), concentrado exclusivamente en la variable objetivo (target_next_hour) y las variables autorregresivas (lag_*, rolling_*) debido a un crecimiento interanual en el volumen promedio (1.84 viajes/hora) y en los picos máximos (73 a 141 viajes/hora). La estacionalidad horaria (target_hour_sin/cos) y de fines de semana permaneció estable.
+
+- Calibración de Umbral: La evaluación longitudinal de v1 (mayo–octubre 2026) arrojó un WAPE medio de 0.6173 con desviación estándar de 0.0479, fijando una variación relativa natural mes a mes de 7.76% (umbral operativo de 7.8%).
+
+- Validación A/B Test (MLflow): Aunque v3 redujo el RMSE en 1.60% y ganó en 25/31 días (IC95% = [0.0010, 0.0033]), su mejora en MAE fue de apenas 0.2143% (muy por debajo del 7.8% requerido), ganó solo en el 29.9% de las estaciones y degradó la Deviance de Tweedie en +32.57% (11.2975 a 14.9769).
+
+- Decisión Automatizada: El gate de promoción rechazó el despliegue y mantuvo v1 (Champion) en producción.
+## Monitoreo de P2: riesgo de desbalance de estaciones
+
+P2 clasifica si una estación quedará vacía o llena en la hora siguiente con un `HistGradientBoostingClassifier`. El flujo usa las mismas clases de `features_p2.py` con el corte movido a septiembre de 2026, así que el drift se mide sobre las 11 variables que recibe el modelo, y reutiliza la clase `EvidentlyMonitor`.
+
+### Conjuntos
+
+| Conjunto | Horas objetivo | Uso |
+|---|---|---|
+| Referencia | Enero a diciembre 2025 | Entrenamiento del champion y referencia del drift |
+| Actual | Julio a septiembre 2026 | Primer trimestre que ninguna versión vio; drift y A/B testing |
+| Entrenamiento del challenger | Enero 2025 a junio 2026 | Mismo GBM con los mismos hiperparámetros, reentrenado con datos recientes |
+
+Como en la evaluación original, el conjunto actual excluye las estaciones que comenzaron a operar desde abril de 2026.
+
+### Archivos
+
+```text
+proyecto_mibici/
+├── modeling/
+│   └── retrain_p2.py              <- Challenger: mismo GBM con datos hasta junio de 2026, alias challenger
+└── monitoring/
+    ├── datos_p2.py                <- Conjuntos de referencia y actual (data/monitoring/p2_*.parquet)
+    ├── drift_report_p2.py         <- Drift con Evidently (reports/drift/drift_p2_*.html y *_scores.csv)
+    └── ab_test_p2.py              <- A/B pareado champion vs challenger en julio a septiembre de 2026
+```
+
+### Ejecución
+
+Con el servidor de MLflow encendido y el champion de P2 registrado:
+
+```bash
+python -m proyecto_mibici.monitoring.datos_p2
+python -m proyecto_mibici.monitoring.drift_report_p2
+python -m proyecto_mibici.modeling.retrain_p2
+python -m proyecto_mibici.monitoring.ab_test_p2            # agregar --promover para mover el alias si la regla lo indica
+```
+
+Las corridas quedan en el experimento `mibici-equipo20-p2-monitoreo`.
+
+### A/B testing en clasificación
+
+Las dos versiones predicen exactamente las mismas filas del periodo actual. La diferencia en F1 y PR-AUC se evalúa con un bootstrap por estación (300 repeticiones), porque las horas de una misma estación no son independientes, y se complementa con la prueba de McNemar. La regla, fijada antes de ver resultados, promueve al challenger solo si el IC 95 % de la diferencia queda por encima de 0 en F1 y en PR-AUC.
+
+### Resultados de P2 (julio a septiembre de 2026)
+
+- **Drift:** Evidently no detecta drift en ninguna de las 12 columnas (11 variables y el objetivo); el puntaje más alto es 0.087 en `acumulado_relativo`. Aun así, la proporción de horas con riesgo de estación vacía bajó de 6.8 % a 4.3 % y la tasa del objetivo de 13.0 % a 9.9 %. Jensen-Shannon es poco sensible a eventos raros, así que para las variables de riesgo conviene vigilar también el cambio relativo de la proporción.
+- **A/B testing:** el challenger obtuvo F1 0.8477 contra 0.8468 y PR-AUC 0.9284 contra 0.9279, con IC 95 % de la diferencia en F1 de +0.0004 a +0.0013 y McNemar p = 0.00024. Ambos intervalos quedan sobre cero, así que la regla promueve al challenger. La ganancia es pequeña, unos 83 riesgos más detectados en tres meses.
+
+## Monitoreo de P3: clustering de estaciones
+
+P3 asigna cada estación a uno de cuatro grupos funcionales según su perfil de uso, así que aquí cada conjunto de datos tiene una fila por estación con las ocho variables de `P3_VARIABLES`. El flujo sigue los mismos pasos que P1 y P2 y reutiliza la clase `EvidentlyMonitor`.
+
+### Conjuntos
+
+| Conjunto | Periodo de viajes | Uso |
+|---|---|---|
+| `referencia` | Enero a diciembre 2025 | Entrenamiento del champion y referencia del drift |
+| `actual` | Octubre 2026 | Periodo de producción: drift y A/B testing |
+| `referencia_octubre` | Octubre 2025 | Control de temporada (mismo mes un año antes) |
+| `reciente` | Octubre 2025 a septiembre 2026 | Entrenamiento del challenger (los doce meses previos al periodo actual) |
+
+### Archivos
+
+```text
+proyecto_mibici/
+├── config.py                      <- Experimento MLFLOW_EXPERIMENT_MONITOREO_P3
+├── modeling/
+│   └── retrain_p3.py              <- Challenger: mismo KMeans k=4 con perfiles recientes
+└── monitoring/
+    ├── datos_p3.py                <- Perfiles de estaciones por periodo (data/monitoring/p3_*.parquet)
+    ├── drift_report_p3.py         <- Drift con Evidently contra 2025 y contra octubre 2025 (reports/drift/p3/)
+    └── ab_test_p3.py              <- A/B pareado champion vs challenger en octubre 2026 (reports/ab_test/p3/)
+tests/
+└── test_monitoreo_p3.py           <- Pruebas de las métricas, el emparejamiento de grupos y la regla de decisión
+```
+
+### Ejecución
+
+Con el servidor de MLflow encendido y el champion de P3 registrado (ver los pasos de la Entrega 2):
+
+```bash
+python -m proyecto_mibici.monitoring.datos_p3
+python -m proyecto_mibici.monitoring.drift_report_p3
+python -m proyecto_mibici.modeling.retrain_p3
+python -m proyecto_mibici.monitoring.ab_test_p3            # agregar --promover para mover el alias si la regla lo indica
+```
+
+O todo junto con `make monitoreo_p3`. Las corridas quedan en el experimento `mibici-equipo20-p3-monitoreo`.
+
+### A/B testing en clustering
+
+Sin etiqueta real, las dos versiones se comparan con métricas internas (silhouette, Davies-Bouldin y Calinski-Harabasz) calculadas sobre las mismas estaciones de octubre 2026 y en un mismo espacio estandarizado. Los números de grupo de cada versión se emparejan por cercanía de centroides antes de compararlos. La diferencia se acompaña de un bootstrap por estación (1,000 repeticiones) y de la proporción de estaciones que cambian de grupo respecto al periodo de entrenamiento de cada versión.
+
+La regla, fijada antes de ver resultados, promueve el challenger solo si el IC 95 % de la diferencia de silhouette queda por encima de 0, su Davies-Bouldin no empeora y ningún grupo queda con menos del 5 % de las estaciones.
+
+### Resultados de P3 (octubre 2026)
+
+- **Drift:** Evidently marca drift en 6 de 8 variables contra 2025 y en 7 de 8 contra octubre 2025. Los cambios más grandes son `duracion_media` (11.4 a 9.2 minutos, Wasserstein normalizada 1.16), `balance_neto` (desviación de 0.120 a 0.056, 0.42) y `viajes_dia_log` (0.26). El drift se mantiene al restringir la comparación a las 369 estaciones presentes en ambos periodos, así que el cambio ocurre dentro de las mismas estaciones y las 98 estaciones nuevas pesan poco. La duración media mensual se mantuvo cerca de 11.1 minutos hasta junio de 2026 y bajó cada mes desde julio, mientras el volumen pasó de unos 375 mil viajes mensuales a 635 mil en octubre.
+- **Efecto en el champion:** su silhouette bajó de 0.182 (prueba mayo a septiembre) a 0.163 en octubre y 33 % de las estaciones cambiaron de grupo respecto a 2025. El grupo de alta demanda pasó de 134 a 251 estaciones, absorbiendo estaciones de los grupos definidos por viajes largos.
+- **A/B testing:** el challenger (v2) obtuvo silhouette 0.166 contra 0.163, con IC 95 % de la diferencia de −0.006 a +0.010, y mejoró Davies-Bouldin en 0.04 (IC −0.072 a −0.007). El intervalo de la silhouette incluye el cero, así que la regla mantiene al champion (v1).
+
+
+## Prueba completa de la entrega
+
+Esta guía corre el monitoreo de las tres preguntas desde un clon limpio. Todos los comandos se ejecutan desde la raíz del repositorio con el entorno virtual activo.
+
+### 1. Requisitos
+
+```bash
+pip install -r requirements.txt
+```
+
+En una terminal aparte, el servidor de MLflow debe quedar encendido durante toda la prueba:
+
+```bash
+mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns --port 5000
+```
+
+Si el servidor no corre en `http://localhost:5000`, definir `MLFLOW_TRACKING_URI` antes de continuar.
+
+La clase `EvidentlyMonitor` intenta además subir los reportes a Evidently UI (`evidently ui`, puerto 8000). Si no está corriendo, muestra un aviso y guarda el registro como JSON en `reports/drift/registro/`; los reportes y resultados no cambian. Ver `evidently.md` para usar la interfaz.
+
+### 2. Datos y champions registrados
+
+Los A/B testing comparan contra el alias `champion` de cada modelo, así que en una máquina nueva primero hay que descargar los datos, entrenar los champions y registrarlos. Este paso se hace una sola vez:
+
+```bash
+python -m proyecto_mibici.dataset
+python -m proyecto_mibici.modeling.train_p1 --model lgbm_tweedie
+python -m proyecto_mibici.modeling.train_p2 --modelo gbm
+python -m proyecto_mibici.modeling.train_p3 --modelo kmeans --n-clusters 4
+python run_mejor_modelo.py
+```
+
+### 3. Monitoreo por pregunta
+
+```bash
+# P1: demanda horaria
+python -m proyecto_mibici.monitoring.drift_report
+python -m proyecto_mibici.modeling.retrain_p1
+python -m proyecto_mibici.monitoring.umbral_ab_p1
+python -m proyecto_mibici.monitoring.ab_test_p1 --min-mejora-mae 7.8
+
+# P2: riesgo de desbalance
+python -m proyecto_mibici.monitoring.datos_p2
+python -m proyecto_mibici.monitoring.drift_report_p2
+python -m proyecto_mibici.modeling.retrain_p2
+python -m proyecto_mibici.monitoring.ab_test_p2
+
+# P3: grupos de estaciones (o make monitoreo_p3)
+python -m proyecto_mibici.monitoring.datos_p3
+python -m proyecto_mibici.monitoring.drift_report_p3
+python -m proyecto_mibici.modeling.retrain_p3
+python -m proyecto_mibici.monitoring.ab_test_p3
+```
+
+Cada reentrenamiento registra una nueva versión del modelo con el alias `challenger`, y cada A/B la compara contra el `champion`. Ningún script mueve el alias `champion` salvo que se agregue `--promover` al A/B y la regla de decisión lo indique.
+
+### 4. Salidas
+
+| Salida | Dónde |
+|---|---|
+| Reportes de Evidently (HTML) y tablas de scores (CSV) | `reports/drift/` (P3 en `reports/drift/p3/`) |
+| Resumen de cada A/B testing | `reports/ab_test/p1/`, `reports/ab_test/p2/` y `reports/ab_test/p3/` (`ab_resumen.csv`) |
+| Corridas de drift, reentrenamiento y A/B | Experimentos `mibici-equipo20-p1-monitoreo`, `mibici-equipo20-p2-monitoreo` y `mibici-equipo20-p3-monitoreo` en MLflow |
+| Versiones champion y challenger | Sección Models de MLflow |
+
+Las carpetas `data/` y `reports/` no se suben al repositorio.
+
+### 5. Tiempos aproximados
+
+El reentrenamiento de P1 tarda unos 10 minutos por el volumen de la tabla estación-hora, y los A/B de P1 y P2 otros 10 minutos cada uno por el bootstrap. El resto de los pasos toma menos de un minuto. La suite de pruebas (`pytest`) incluye `tests/test_monitoreo_p3.py`, que valida las métricas y la regla de decisión de P3 sin necesidad de MLflow.
+
+### 6. Resultados esperados
+
+Al reproducir el flujo, las decisiones coinciden con el reporte: P1 mantiene el champion (la mejora en MAE no alcanza el umbral de 7.8 % y la deviance empeora), P2 promueve el challenger y P3 mantiene el champion. Las métricas de los reentrenamientos pueden variar en el cuarto decimal entre equipos.
