@@ -63,6 +63,15 @@ data: requirements
 	$(PYTHON_INTERPRETER) proyecto_mibici/dataset.py
 
 
+## Monitoreo de P3: conjuntos, drift con Evidently, challenger y A/B testing (requiere MLflow en :5000)
+.PHONY: monitoreo_p3
+monitoreo_p3:
+	$(PYTHON_INTERPRETER) -m proyecto_mibici.monitoring.datos_p3
+	$(PYTHON_INTERPRETER) -m proyecto_mibici.monitoring.drift_report_p3
+	$(PYTHON_INTERPRETER) -m proyecto_mibici.modeling.retrain_p3
+	$(PYTHON_INTERPRETER) -m proyecto_mibici.monitoring.ab_test_p3
+
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
