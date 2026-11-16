@@ -1185,3 +1185,57 @@ docker/
 ```
 
 Revisar [documentación de contenedores](./documentacion_contenedores.md) para obtener detalles de despliegue, variables de entorno y ejecución con Docker Compose.
+
+---
+
+## Monitoreo de P3: clustering de estaciones
+
+P3 asigna cada estación a uno de cuatro grupos funcionales según su perfil de uso, así que aquí cada conjunto de datos tiene una fila por estación con las ocho variables de `P3_VARIABLES`. El flujo sigue los mismos pasos que P1 y P2 y reutiliza la clase `EvidentlyMonitor`.
+
+### Conjuntos
+
+| Conjunto | Periodo de viajes | Uso |
+|---|---|---|
+| `referencia` | Enero a diciembre 2025 | Entrenamiento del champion y referencia del drift |
+| `actual` | Octubre 2026 | Periodo de producción: drift y A/B testing |
+| `referencia_octubre` | Octubre 2025 | Control de temporada (mismo mes un año antes) |
+| `reciente` | Octubre 2025 a septiembre 2026 | Entrenamiento del challenger (los doce meses previos al periodo actual) |
+
+### Archivos
+
+```text
+proyecto_mibici/
+├── modeling/
+│   └── retrain_p3.py              <- Challenger: mismo KMeans k=4 con perfiles recientes
+└── monitoring/
+    ├── datos_p3.py                <- Perfiles de estaciones por periodo (data/monitoring/p3_*.parquet)
+    ├── drift_report_p3.py         <- Drift con Evidently contra 2025 y contra octubre 2025 (reports/drift/p3/)
+    └── ab_test_p3.py              <- A/B pareado champion vs challenger en octubre 2026 (reports/ab_test/p3/)
+tests/
+└── test_monitoreo_p3.py           <- Pruebas de las métricas, el emparejamiento de grupos y la regla de decisión
+```
+
+### Ejecución
+
+Con el servidor de MLflow encendido y el champion de P3 registrado (ver los pasos de la Entrega 2):
+
+```bash
+python -m proyecto_mibici.monitoring.datos_p3
+python -m proyecto_mibici.monitoring.drift_report_p3
+python -m proyecto_mibici.modeling.retrain_p3
+python -m proyecto_mibici.monitoring.ab_test_p3            # agregar --promover para mover el alias si la regla lo indica
+```
+
+O todo junto con `make monitoreo_p3`. Las corridas quedan en el experimento `mibici-equipo20-p3-monitoreo`.
+
+### A/B testing en clustering
+
+Sin etiqueta real, las dos versiones se comparan con métricas internas (silhouette, Davies-Bouldin y Calinski-Harabasz) calculadas sobre las mismas estaciones de octubre 2026 y en un mismo espacio estandarizado. Los números de grupo de cada versión se emparejan por cercanía de centroides antes de compararlos. La diferencia se acompaña de un bootstrap por estación (1,000 repeticiones) y de la proporción de estaciones que cambian de grupo respecto al periodo de entrenamiento de cada versión.
+
+La regla, fijada antes de ver resultados, promueve el challenger solo si el IC 95 % de la diferencia de silhouette queda por encima de 0, su Davies-Bouldin no empeora y ningún grupo queda con menos del 5 % de las estaciones.
+
+### Resultados de P3 (octubre 2026)
+
+- **Drift:** Evidently marca drift en 6 de 8 variables contra 2025 y en 7 de 8 contra octubre 2025. Los cambios más grandes son `duracion_media` (11.4 a 9.2 minutos, Wasserstein normalizada 1.16), `balance_neto` (desviación de 0.120 a 0.056, 0.42) y `viajes_dia_log` (0.26). El drift se mantiene al restringir la comparación a las 369 estaciones presentes en ambos periodos, así que el cambio ocurre dentro de las mismas estaciones y las 98 estaciones nuevas pesan poco. La duración media mensual se mantuvo cerca de 11.1 minutos hasta junio de 2026 y bajó cada mes desde julio, mientras el volumen pasó de unos 375 mil viajes mensuales a 635 mil en octubre.
+- **Efecto en el champion:** su silhouette bajó de 0.182 (prueba mayo a septiembre) a 0.163 en octubre y 33 % de las estaciones cambiaron de grupo respecto a 2025. El grupo de alta demanda pasó de 134 a 251 estaciones, absorbiendo estaciones de los grupos definidos por viajes largos.
+- **A/B testing:** el challenger (v2) obtuvo silhouette 0.166 contra 0.163, con IC 95 % de la diferencia de −0.006 a +0.010, y mejoró Davies-Bouldin en 0.04 (IC −0.072 a −0.007). El intervalo de la silhouette incluye el cero, así que la regla mantiene al champion (v1).
