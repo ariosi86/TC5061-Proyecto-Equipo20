@@ -192,7 +192,6 @@ def process_trips(downloaded_paths: List[Path]) -> pd.DataFrame:
     df_test_2026.to_parquet(TRIPS_TEST_PATH, index=False)
     logger.success(f"Test (Abr-Sep 2026) guardado: {len(df_test_2026):,} filas -> {TRIPS_TEST_PATH}")
 
-
     return df
 
 
