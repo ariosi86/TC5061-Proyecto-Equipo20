@@ -1435,3 +1435,59 @@ El reentrenamiento de P1 tarda unos 10 minutos por el volumen de la tabla estaci
 ### 6. Resultados esperados
 
 Al reproducir el flujo, las decisiones coinciden con el reporte: P1 mantiene el champion (la mejora en MAE no alcanza el umbral de 7.8 % y la deviance empeora), P2 promueve el challenger y P3 mantiene el champion. Las métricas de los reentrenamientos pueden variar en el cuarto decimal entre equipos.
+
+---
+# Entrega 7: Microservicios, CI/CD, Pruebas de Carga y FinOps
+
+Esta sección documenta la operación completa del sistema contenerizado, el pipeline de integración continua, las pruebas de carga con Locust y el monitoreo de recursos.
+
+## 1. Orquestación con Docker Compose
+
+El archivo `docker/docker-compose.yml` orquesta los servicios `mlflow`, `prep` (ingesta, entrenamiento y registro de campeones `@champion`), `api-p1`, `api-p2` y `api-p3` sobre la red `mibici-net`:
+
+```bash
+# Construir e iniciar todo el sistema
+docker-compose -f docker/docker-compose.yml build
+docker-compose -f docker/docker-compose.yml up -d
+
+# Verificar estado y logs
+docker-compose -f docker/docker-compose.yml ps
+docker-compose -f docker/docker-compose.yml logs -f prep
+```
+
+| Servicio | Puerto host | Descripción |
+|---|---|---|
+| `mlflow` | `5001` | UI y Model Registry de MLflow |
+| `api-p1` | `8001` | API FastAPI de demanda horaria (`/health`, `/predict`) |
+| `api-p2` | `8002` | API FastAPI de riesgo de desbalance (`/health`, `/predict`) |
+| `api-p3` | `8003` | API FastAPI de clustering funcional (`/health`, `/predict`) |
+
+Las APIs mantienen el modelo en memoria con un caché thread-safe controlado por la variable `MODEL_CACHE_TTL` (por defecto `60` segundos; `0` desactiva el caché para comparativas de rendimiento).
+
+## 2. Pipeline de CI/CD (GitHub Actions)
+
+El workflow `.github/workflows/ci.yml` se ejecuta automáticamente en cada `push` y en `pull_request` hacia `main`/`master`:
+
+1. **`test`**: Configura Python 3.10 con caché de `pip`, instala `libgomp1` y `requirements.txt`, y ejecuta la suite `pytest -v`.
+2. **`docker-build-and-validate`** (depende de `test`): Valida la configuración de `docker/docker-compose.yml`, construye todas las imágenes con Docker Buildx, levanta `mlflow` y verifica que responda en `http://localhost:5001` antes de limpiar con `down -v`.
+
+## 3. Pruebas de Carga con Locust y Monitoreo de Recursos
+
+El escenario de carga en `locustfile.py` simula usuarios concurrentes consultando `/predict` y `/health` sobre las tres APIs (`MiBiciP1User`, `MiBiciP2User`, `MiBiciP3User`). Puede ejecutarse en contenedor mediante el perfil opcional `loadtest` de Compose:
+
+```bash
+# Opción A: Interfaz web de Locust (http://localhost:8089)
+docker-compose -f docker/docker-compose.yml --profile loadtest up -d
+
+# Opción B: Modo headless guardando CSVs y reporte HTML en reports/locust/
+docker-compose -f docker/docker-compose.yml --profile loadtest run --rm locust \
+  -f /mnt/locust/locustfile.py --headless -u 20 -r 5 -t 1m \
+  --csv /mnt/locust/reports/mibici --html /mnt/locust/reports/reporte_locust.html
+```
+
+Durante la prueba de carga, el consumo de CPU y memoria de los contenedores del sistema se monitorea con:
+
+```bash
+docker stats mlflow api-p1 api-p2 api-p3
+```
+
