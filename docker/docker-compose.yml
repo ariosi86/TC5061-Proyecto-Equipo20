@@ -91,6 +91,28 @@ services:
     volumes:
       - mlruns:/app/mlruns
 
+  locust:
+    image: locustio/locust:2.32.4
+    container_name: locust
+    profiles:
+      - loadtest
+    ports:
+      - "8089:8089"
+    environment:
+      - API_P1_URL=http://api-p1:8000
+      - API_P2_URL=http://api-p2:8000
+      - API_P3_URL=http://api-p3:8000
+    volumes:
+      - ../locustfile.py:/mnt/locust/locustfile.py:ro
+      - ../reports/locust:/mnt/locust/reports
+    command: -f /mnt/locust/locustfile.py --host http://api-p1:8000
+    networks:
+      - mibici-net
+    depends_on:
+      - api-p1
+      - api-p2
+      - api-p3
+
 networks:
   mibici-net:
     driver: bridge

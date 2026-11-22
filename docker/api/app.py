@@ -28,15 +28,10 @@ MODELS_OUTPUT = {"p1": P1Output, "p2": P2Output, "p3": P3Output}
 EntradaModel = MODELS_INPUT.get(PREGUNTA, dict)
 SalidaModel = MODELS_OUTPUT.get(PREGUNTA)
 
-# Cache ligero del modelo cargado por petición (evita recargar run_id/version en cada predict interno)
-modelo_name_cache = {}
-
-
 def obtener_modelo_desde_registry():
     """
-    Carga el modelo desde MLflow Model Registry en cada petición.
-    Diseño intencional: el modelo no va empaquetado en la imagen; se descarga
-    bajo demanda desde MLflow usando download_artifacts + joblib.
+    Obtiene el modelo desde MLflow Model Registry usando caché en memoria con TTL
+    (MODEL_CACHE_TTL segundos, default 60). Si expira, descarga desde MLflow.
     """
     try:
         return load_model_and_params()
@@ -78,21 +73,22 @@ def health():
     }
 
 
-def _predecir_p1(modelo_obj, datos: dict):
+def _predecir_p1(ctx: dict, datos: dict):
     entrada = P1Input(**datos)
     df = entrada.to_dataframe()
-    pred = modelo_obj.predict(df)
+    pred = ctx["modelo"].predict(df)
     return P1Output(
-        modelo=modelo_name_cache["model_name"],
-        version=modelo_name_cache["version"],
-        run_id=modelo_name_cache["run_id"],
+        modelo=ctx["model_name"],
+        version=ctx["version"],
+        run_id=ctx["run_id"],
         demanda_predicha=float(pred[0]),
     )
 
 
-def _predecir_p2(modelo_obj, datos: dict):
+def _predecir_p2(ctx: dict, datos: dict):
     entrada = P2Input(**datos)
     df = entrada.to_dataframe()
+    modelo_obj = ctx["modelo"]
     pred = modelo_obj.predict(df)
     try:
         proba = modelo_obj.predict_proba(df)[:, 1]
@@ -100,22 +96,22 @@ def _predecir_p2(modelo_obj, datos: dict):
     except Exception:
         prob_riesgo = float(pred[0])
     return P2Output(
-        modelo=modelo_name_cache["model_name"],
-        version=modelo_name_cache["version"],
-        run_id=modelo_name_cache["run_id"],
+        modelo=ctx["model_name"],
+        version=ctx["version"],
+        run_id=ctx["run_id"],
         prob_riesgo=prob_riesgo,
         pred_riesgo=int(pred[0]),
     )
 
 
-def _predecir_p3(modelo_obj, datos: dict):
+def _predecir_p3(ctx: dict, datos: dict):
     entrada = P3Input(**datos)
     df = entrada.to_dataframe()
-    pred = modelo_obj.predict(df)
+    pred = ctx["modelo"].predict(df)
     return P3Output(
-        modelo=modelo_name_cache["model_name"],
-        version=modelo_name_cache["version"],
-        run_id=modelo_name_cache["run_id"],
+        modelo=ctx["model_name"],
+        version=ctx["version"],
+        run_id=ctx["run_id"],
         grupo_kmeans=int(pred[0]),
     )
 
@@ -138,19 +134,15 @@ def predict(datos: EntradaModel): # pyright: ignore[reportInvalidTypeForm]  # es
         )
 
     try:
-        modelo_obj = ctx["modelo"]
-        modelo_name_cache.update(ctx)
-        
         # Con esquema, FastAPI ya validó y entrega un objeto Pydantic; sin esquema llega un dict
         datos_dict = datos.model_dump() if hasattr(datos, "model_dump") else datos
 
-
         if PREGUNTA == "p1":
-            resultado = _predecir_p1(modelo_obj, datos_dict)
+            resultado = _predecir_p1(ctx, datos_dict)
         elif PREGUNTA == "p2":
-            resultado = _predecir_p2(modelo_obj, datos_dict)
+            resultado = _predecir_p2(ctx, datos_dict)
         elif PREGUNTA == "p3":
-            resultado = _predecir_p3(modelo_obj, datos_dict)
+            resultado = _predecir_p3(ctx, datos_dict)
         else:
             raise HTTPException(
                 status_code=400,
