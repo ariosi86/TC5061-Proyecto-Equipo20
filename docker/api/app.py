@@ -1,4 +1,7 @@
+from contextlib import nullcontext
 import os
+import threading
+import time
 import traceback
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -28,17 +31,42 @@ MODELS_OUTPUT = {"p1": P1Output, "p2": P2Output, "p3": P3Output}
 EntradaModel = MODELS_INPUT.get(PREGUNTA, dict)
 SalidaModel = MODELS_OUTPUT.get(PREGUNTA)
 
+# Caché del modelo con vencimiento (FinOps). Con CACHE_TTL_SEG=0 el modelo se descarga de MLflow
+# en cada petición (comportamiento original); con N > 0 se reutiliza durante N segundos y después
+# se vuelve a consultar el registry, así un nuevo @champion se toma sin reiniciar el contenedor.
+CACHE_TTL_SEG = float(os.environ.get("CACHE_TTL_SEG", "0"))
+_cache_modelo = {"ctx": None, "cargado_en": 0.0}
+_candado_cache = threading.Lock()
+
+
+def _cache_vigente():
+    ctx = _cache_modelo["ctx"]
+    if ctx is not None and time.monotonic() - _cache_modelo["cargado_en"] < CACHE_TTL_SEG:
+        return ctx
+    return None
+
+
 def obtener_modelo_desde_registry():
     """
-    Obtiene el modelo desde MLflow Model Registry usando caché en memoria con TTL
-    (MODEL_CACHE_TTL segundos, default 60). Si expira, descarga desde MLflow.
+    Carga el modelo desde MLflow Model Registry (con caché opcional, ver CACHE_TTL_SEG).
+    Diseño intencional: el modelo no va empaquetado en la imagen; se descarga
+    bajo demanda desde MLflow usando download_artifacts + joblib.
     """
-    try:
-        return load_model_and_params()
-    except Exception as exc:  # noqa: BLE001
-        print(f"No se pudo cargar el modelo {MODELO_REGISTRY}: {exc}")
-        traceback.print_exc()
-        return None
+    if CACHE_TTL_SEG > 0 and (ctx := _cache_vigente()) is not None:
+        return ctx
+    # El candado evita que varias peticiones simultáneas descarguen el modelo a la vez al vencer la caché
+    with _candado_cache if CACHE_TTL_SEG > 0 else nullcontext():
+        if CACHE_TTL_SEG > 0 and (ctx := _cache_vigente()) is not None:
+            return ctx
+        try:
+            ctx = load_model_and_params()
+        except Exception as exc:  # noqa: BLE001
+            print(f"No se pudo cargar el modelo {MODELO_REGISTRY}: {exc}")
+            traceback.print_exc()
+            return None
+        if CACHE_TTL_SEG > 0:
+            _cache_modelo.update(ctx=ctx, cargado_en=time.monotonic())
+        return ctx
 
 
 @app.get("/health", tags=["health"])

@@ -1,0 +1,96 @@
+2026-11-22T05:00:14Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    4.33%     1.837GiB / 7.752GiB   23.70%    178kB / 602kB     411MB / 722MB    187
+f70a121b0c1d   api-p1    0.12%     221.7MiB / 7.752GiB   2.79%     64.3kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.11%     195.3MiB / 7.752GiB   2.46%     64.5kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.13%     187.3MiB / 7.752GiB   2.36%     57.7kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:00:26Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    2.93%     1.76GiB / 7.752GiB    22.71%    179kB / 603kB     411MB / 807MB    187
+f70a121b0c1d   api-p1    0.11%     222.2MiB / 7.752GiB   2.80%     64.3kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.09%     195.3MiB / 7.752GiB   2.46%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.11%     187.3MiB / 7.752GiB   2.36%     57.7kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:00:39Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    1.51%     541.4MiB / 7.752GiB   6.82%     179kB / 603kB     411MB / 2.1GB    187
+f70a121b0c1d   api-p1    0.10%     205.8MiB / 7.752GiB   2.59%     64.3kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.11%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.10%     180.9MiB / 7.752GiB   2.28%     57.7kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:00:51Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    0.87%     541.7MiB / 7.752GiB   6.82%     179kB / 603kB     413MB / 2.1GB    187
+f70a121b0c1d   api-p1    0.07%     205.8MiB / 7.752GiB   2.59%     64.3kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.07%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.07%     180.9MiB / 7.752GiB   2.28%     57.7kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:01:03Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    2.08%     545.4MiB / 7.752GiB   6.87%     179kB / 603kB     413MB / 2.1GB    188
+f70a121b0c1d   api-p1    0.05%     205.8MiB / 7.752GiB   2.59%     64.3kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.08%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.05%     180.9MiB / 7.752GiB   2.28%     57.7kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:01:15Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    0.89%     541.8MiB / 7.752GiB   6.83%     186kB / 609kB     413MB / 2.1GB    187
+f70a121b0c1d   api-p1    0.05%     205.8MiB / 7.752GiB   2.59%     64.4kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.05%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.05%     180.9MiB / 7.752GiB   2.28%     57.8kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:01:28Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    0.78%     541.8MiB / 7.752GiB   6.83%     202kB / 652kB     413MB / 2.1GB    187
+f70a121b0c1d   api-p1    0.08%     205.8MiB / 7.752GiB   2.59%     64.4kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.08%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.07%     180.9MiB / 7.752GiB   2.28%     57.8kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:01:40Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    1.01%     542.2MiB / 7.752GiB   6.83%     205kB / 661kB     413MB / 2.1GB    187
+f70a121b0c1d   api-p1    0.08%     205.8MiB / 7.752GiB   2.59%     64.4kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.09%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.08%     180.9MiB / 7.752GiB   2.28%     57.8kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:01:53Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    0.82%     542MiB / 7.752GiB     6.83%     205kB / 661kB     413MB / 2.1GB    187
+f70a121b0c1d   api-p1    0.07%     205.8MiB / 7.752GiB   2.59%     64.4kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.07%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.07%     180.9MiB / 7.752GiB   2.28%     57.8kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:02:05Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    1.61%     542.3MiB / 7.752GiB   6.83%     230kB / 720kB     413MB / 2.1GB    187
+f70a121b0c1d   api-p1    0.11%     205.8MiB / 7.752GiB   2.59%     64.4kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.12%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.05%     180.9MiB / 7.752GiB   2.28%     57.8kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:02:18Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
+94b3258a98c9   mlflow    0.84%     543.4MiB / 7.752GiB   6.85%     312kB / 1.25MB    414MB / 2.1GB    187
+f70a121b0c1d   api-p1    0.05%     205.8MiB / 7.752GiB   2.59%     64.4kB / 12kB     83MB / 9.08MB    16
+93a0c987dd84   api-p2    0.07%     187.7MiB / 7.752GiB   2.36%     64.6kB / 12.1kB   65.5MB / 1.2MB   13
+df9028c26127   api-p3    0.08%     180.9MiB / 7.752GiB   2.28%     57.8kB / 11.8kB   55MB / 823kB     13
+2026-11-22T05:02:31Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O          BLOCK I/O         PIDS
+94b3258a98c9   mlflow    1.43%     583.1MiB / 7.752GiB   7.35%     321kB / 1.44MB   449MB / 2.1GB     187
+f70a121b0c1d   api-p1    6.32%     229.6MiB / 7.752GiB   2.89%     205kB / 93.7kB   84.1MB / 9.08MB   29
+93a0c987dd84   api-p2    19.85%    189.3MiB / 7.752GiB   2.39%     190kB / 70.5kB   66.2MB / 1.2MB    20
+df9028c26127   api-p3    0.11%     182.8MiB / 7.752GiB   2.30%     138kB / 34.6kB   56MB / 823kB      14
+2026-11-22T05:02:43Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O          BLOCK I/O         PIDS
+94b3258a98c9   mlflow    1.64%     583.1MiB / 7.752GiB   7.35%     321kB / 1.44MB   449MB / 2.1GB     187
+f70a121b0c1d   api-p1    6.81%     229.4MiB / 7.752GiB   2.89%     291kB / 187kB    84.1MB / 17.4MB   20
+93a0c987dd84   api-p2    20.60%    189.6MiB / 7.752GiB   2.39%     254kB / 135kB    66.2MB / 1.6MB    24
+df9028c26127   api-p3    0.44%     182.8MiB / 7.752GiB   2.30%     155kB / 56.3kB   56MB / 856kB      14
+2026-11-22T05:02:55Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O          BLOCK I/O         PIDS
+94b3258a98c9   mlflow    5.92%     583.1MiB / 7.752GiB   7.35%     322kB / 1.44MB   449MB / 2.1GB     187
+f70a121b0c1d   api-p1    4.54%     229.7MiB / 7.752GiB   2.89%     375kB / 290kB    84.1MB / 17.4MB   20
+93a0c987dd84   api-p2    18.88%    189.7MiB / 7.752GiB   2.39%     318kB / 197kB    66.2MB / 1.6MB    24
+df9028c26127   api-p3    0.75%     182.8MiB / 7.752GiB   2.30%     176kB / 73.4kB   56MB / 856kB      14
+2026-11-22T05:03:08Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O          BLOCK I/O         PIDS
+94b3258a98c9   mlflow    1.39%     583.1MiB / 7.752GiB   7.35%     322kB / 1.44MB   449MB / 2.1GB     187
+f70a121b0c1d   api-p1    5.44%     229.6MiB / 7.752GiB   2.89%     465kB / 389kB    84.1MB / 17.4MB   24
+93a0c987dd84   api-p2    20.55%    189.7MiB / 7.752GiB   2.39%     381kB / 263kB    66.2MB / 1.6MB    24
+df9028c26127   api-p3    1.00%     182.8MiB / 7.752GiB   2.30%     193kB / 90.4kB   56MB / 856kB      14
+2026-11-22T05:03:21Z
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O          BLOCK I/O         PIDS
+94b3258a98c9   mlflow    2.22%     583.4MiB / 7.752GiB   7.35%     322kB / 1.44MB   449MB / 2.1GB     187
+f70a121b0c1d   api-p1    0.18%     229.6MiB / 7.752GiB   2.89%     538kB / 473kB    84.1MB / 17.4MB   20
+93a0c987dd84   api-p2    0.22%     189.7MiB / 7.752GiB   2.39%     434kB / 316kB    66.2MB / 1.6MB    24
+df9028c26127   api-p3    0.17%     182.8MiB / 7.752GiB   2.30%     210kB / 110kB    56MB / 856kB      14

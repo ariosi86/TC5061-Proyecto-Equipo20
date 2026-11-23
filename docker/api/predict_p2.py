@@ -1,21 +1,29 @@
-from .schemas import P2Input, P2Output
-
-P2_FEATURES = [
-    "hora_del_dia", "dia_semana", "fin_de_semana", "capacidad",
-    "salidas", "llegadas", "balance_acumulado_dia", "acumulado_relativo",
-    "balance_ult_3h_relativo", "riesgo_vacia", "riesgo_llena",
-]
+from schemas import P2Input, P2Output
 
 
-def predecir(modelo, datos: P2Input) -> P2Output:
+def predecir(modelo, datos: P2Input, ctx: dict) -> P2Output:
+    """Predice si la estación estará en riesgo (vacía o llena) en la hora siguiente.
+
+    `ctx` es el diccionario que devuelve `load_model_and_params()`; de ahí salen
+    el nombre, la versión y el run_id del campeón que se reportan en la salida.
+    """
+    if not hasattr(modelo, "predict_proba"):
+        raise TypeError(
+            "El modelo de P2 no tiene predict_proba; se esperaba el clasificador de "
+            "scikit-learn y no un wrapper pyfunc"
+        )
+
     df = datos.to_dataframe()
-    pred = modelo.predict(df)
-    try:
-        proba = modelo.predict_proba(df)[:, 1]
-        prob_riesgo = float(proba[0])
-    except Exception:
-        prob_riesgo = float(pred[0])
+    # Columna de predict_proba que corresponde a la clase "en riesgo" (True o 1),
+    # sin suponer que siempre es la segunda
+    col_riesgo = list(modelo.classes_).index(True)
+    prob_riesgo = float(modelo.predict_proba(df)[0, col_riesgo])
+    pred_riesgo = int(modelo.predict(df)[0])
+
     return P2Output(
+        modelo=ctx["model_name"],
+        version=str(ctx["version"]),
+        run_id=ctx["run_id"],
         prob_riesgo=prob_riesgo,
-        pred_riesgo=int(pred[0]),
+        pred_riesgo=pred_riesgo,
     )
