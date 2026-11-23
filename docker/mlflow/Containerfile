@@ -1,16 +1,23 @@
+# syntax=docker/dockerfile:1
 FROM python:3.10-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir mlflow[extras]>=2.15.0
+COPY docker/constraints.txt /tmp/constraints.txt
+# Caché de pip de BuildKit: reconstruir o reintentar no vuelve a descargar los paquetes
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && \
+    pip install --retries 10 --timeout 120 -c /tmp/constraints.txt mlflow
 
 EXPOSE 5000
 
+# El backend (SQLite) y los artefactos viven en /app/mlruns, que es el volumen compartido:
+# el Model Registry sobrevive a que el contenedor se recree.
 CMD ["mlflow", "server", \
-     "--backend-store-uri", "sqlite:///mlflow.db", \
+     "--backend-store-uri", "sqlite:////app/mlruns/mlflow.db", \
      "--default-artifact-root", "./mlruns", \
      "--host", "0.0.0.0", "--port", "5000", \
+     "--workers", "2", \
      "--serve-artifacts", \
      "--artifacts-destination", "./mlruns", \
-     "--allowed-hosts", "mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*,host.docker.internal,host.docker.internal:5001,10.*,192.168.*,127.0.0.1,127.0.0.1:*"]
+     "--allowed-hosts", "mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*,host.docker.internal,host.docker.internal:5001,10.*,192.168.*"]

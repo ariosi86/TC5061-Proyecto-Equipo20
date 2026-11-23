@@ -1,0 +1,24 @@
+# Contexto de build mínimo: los datos y los artefactos llegan por volúmenes, no por la imagen
+.git
+.github
+.venv
+venv
+**/__pycache__
+**/*.py[co]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+data
+mlruns
+mlartifacts
+mlflow.db
+models/*.pkl
+models/*.joblib
+notebooks
+reports
+docs
+references
+locust
+*.md
+!README.md

@@ -1,33 +1,93 @@
+# Sistema MiBici (Equipo 20): MLflow + preparación de campeones + 3 APIs de inferencia.
+# Levantar todo:   docker compose -f docker/docker-compose.yml up -d --build
+# Variables:       docker/.env (opcional; ver docker/.env.example). Sin .env se usan los valores por defecto.
+name: mibici
+
+# Configuración común de las tres APIs (misma imagen; cambia la pregunta y el modelo del registry)
+x-api: &api
+  build:
+    context: ..
+    dockerfile: docker/api/Containerfile
+  image: mibici-api:latest
+  restart: unless-stopped
+  environment: &api-env
+    MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+    # Segundos que la API reutiliza el modelo antes de volver a consultar MLflow.
+    # 0 = descarga en cada petición (línea base de la prueba de carga; satura MLflow)
+    CACHE_TTL_SEG: ${CACHE_TTL_SEG:-60}
+    MODEL_CACHE_TTL: ${CACHE_TTL_SEG:-60}
+  volumes:
+    - mlruns:/app/mlruns
+  networks:
+    - mibici-net
+  depends_on:
+    mlflow:
+      condition: service_healthy
+    prep:
+      condition: service_completed_successfully
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10)"]
+    interval: 30s
+    timeout: 15s
+    retries: 5
+    start_period: 30s
+  deploy:
+    resources:
+      limits:
+        cpus: "${API_CPUS:-1.0}"
+        memory: ${API_MEMORIA:-1g}
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   mlflow:
     build:
       context: ..
       dockerfile: docker/mlflow/Containerfile
+    image: mibici-mlflow:latest
     container_name: mlflow
+    restart: unless-stopped
     ports:
-      - "5001:5000"
+      - "${MLFLOW_PUERTO:-5001}:5000"
     volumes:
       - mlruns:/app/mlruns
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"]
       interval: 10s
       timeout: 5s
       retries: 15
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "${MLFLOW_CPUS:-1.0}"
+          memory: ${MLFLOW_MEMORIA:-2g}
+    logging: *logging
     networks:
       - mibici-net
 
+  # Servicio de una sola ejecución: ingesta, entrenamiento y registro de campeones.
+  # Si los campeones ya existen en el registry, termina de inmediato (FORZAR_ENTRENAMIENTO=1 lo evita).
   prep:
     build:
       context: ..
       dockerfile: docker/prep/Containerfile
+    image: mibici-prep:latest
     container_name: prep
     environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - PYTHONPATH=/app
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-mibici-equipo20}
+      FORZAR_ENTRENAMIENTO: ${FORZAR_ENTRENAMIENTO:-0}
+      PYTHONPATH: /app
     working_dir: /app
     volumes:
       - mlruns:/app/mlruns
+      # Datos crudos y procesados en el host: la descarga de MiBici solo ocurre la primera vez
+      - ../data:/app/data
+    logging: *logging
     networks:
       - mibici-net
     depends_on:
@@ -35,61 +95,56 @@ services:
         condition: service_healthy
 
   api-p1:
-    build:
-      context: ..
-      dockerfile: docker/api/Containerfile
+    <<: *api
     container_name: api-p1
     ports:
-      - "8001:8000"
+      - "${API_P1_PUERTO:-8001}:8000"
     environment:
-      - PREGUNTA=p1
-      - MODELO_REGISTRY=mibici-equipo20-p1-demanda@champion
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-    networks:
-      - mibici-net
-    depends_on:
-      prep:
-        condition: service_completed_successfully
-    volumes:
-      - mlruns:/app/mlruns
+      <<: *api-env
+      PREGUNTA: p1
+      MODELO_REGISTRY: mibici-equipo20-p1-demanda@champion
 
   api-p2:
-    build:
-      context: ..
-      dockerfile: docker/api/Containerfile
+    <<: *api
     container_name: api-p2
     ports:
-      - "8002:8000"
+      - "${API_P2_PUERTO:-8002}:8000"
     environment:
-      - PREGUNTA=p2
-      - MODELO_REGISTRY=mibici-equipo20-p2-riesgo@champion
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-    networks:
-      - mibici-net
-    depends_on:
-      prep:
-        condition: service_completed_successfully
-    volumes:
-      - mlruns:/app/mlruns
+      <<: *api-env
+      PREGUNTA: p2
+      MODELO_REGISTRY: mibici-equipo20-p2-riesgo@champion
 
   api-p3:
-    build:
-      context: ..
-      dockerfile: docker/api/Containerfile
+    <<: *api
     container_name: api-p3
     ports:
-      - "8003:8000"
+      - "${API_P3_PUERTO:-8003}:8000"
     environment:
-      - PREGUNTA=p3
-      - MODELO_REGISTRY=mibici-equipo20-p3-grupos@champion
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      <<: *api-env
+      PREGUNTA: p3
+      MODELO_REGISTRY: mibici-equipo20-p3-grupos@champion
+
+  locust:
+    image: locustio/locust:2.32.4
+    container_name: locust
+    profiles:
+      - loadtest
+    ports:
+      - "8089:8089"
+    environment:
+      - LOCUST_HOST_P1=http://api-p1:8000
+      - LOCUST_HOST_P2=http://api-p2:8000
+      - LOCUST_HOST_P3=http://api-p3:8000
+    volumes:
+      - ../locust/locustfile.py:/mnt/locust/locustfile.py:ro
+      - ../reports/locust:/mnt/locust/reports
+    command: -f /mnt/locust/locustfile.py
     networks:
       - mibici-net
     depends_on:
-      prep:
-        condition: service_completed_successfully
-    volumes:
-      - mlruns:/app/mlruns
+      - api-p1
+      - api-p2
+      - api-p3
 
 networks:
   mibici-net:
