@@ -1435,3 +1435,188 @@ El reentrenamiento de P1 tarda unos 10 minutos por el volumen de la tabla estaci
 ### 6. Resultados esperados
 
 Al reproducir el flujo, las decisiones coinciden con el reporte: P1 mantiene el champion (la mejora en MAE no alcanza el umbral de 7.8 % y la deviance empeora), P2 promueve el challenger y P3 mantiene el champion. Las métricas de los reentrenamientos pueden variar en el cuarto decimal entre equipos.
+
+---
+# Entrega 7 Microservicios, CI/CD y FinOps
+
+El sistema completo se levanta con un solo comando de Docker Compose, se prueba y construye en cada push con GitHub Actions, y se evaluó bajo carga con Locust para estimar su costo por inferencia. El reporte con las gráficas y el análisis está en `TC5061_Operacion_FinOps_Equipo20.pdf`.
+
+## 1. Arquitectura de servicios
+
+| Servicio | Imagen | Puerto local | Función |
+|---|---|---|---|
+| `mlflow` | `mibici-mlflow` | 5001 | Tracking y Model Registry. Guarda la base SQLite y los artefactos en el volumen `mlruns`. |
+| `prep` | `mibici-prep` | — | Corre una vez: ingesta, entrenamiento de P1, P2 y P3 y registro de los campeones. Si los tres `@champion` ya existen, termina en segundos. |
+| `api-p1`, `api-p2`, `api-p3` | `mibici-api` | 8001, 8002, 8003 | FastAPI con `/predict`, `/health` y `/docs`. Cada una sirve el campeón de su pregunta. |
+
+Los servicios comparten la red `mibici-net`. Las APIs arrancan cuando MLflow está sano y `prep` terminó bien. Cada contenedor tiene healthcheck, política de reinicio, límites de CPU y memoria y rotación de logs. Los datos de MiBici se montan desde `data/` del host, así la descarga ocurre solo la primera vez. `docker/constraints.txt` fija la misma versión de MLflow, scikit-learn y LightGBM en todas las imágenes para que el modelo entrenado en `prep` se deserialice sin errores en la API.
+
+## 2. Levantar el sistema
+
+Requiere Docker con Compose v2 (o `podman-compose`). Desde la raíz del repositorio:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+La primera vez `prep` descarga los datos y entrena los modelos (alrededor de 5 minutos con los datos ya descargados). Para revisar el estado y probar una predicción:
+
+```bash
+docker compose -f docker/docker-compose.yml ps
+curl http://localhost:8003/health
+curl -X POST http://localhost:8003/predict -H "Content-Type: application/json" -d '{"pct_manana":0.23,"pct_mediodia":0.33,"pct_tarde":0.29,"pct_noche":0.12,"pct_fin_de_semana":0.20,"duracion_media":11.12,"viajes_dia_log":3.23,"balance_neto":-0.02}'
+```
+
+Para detener los servicios conservando el registry usar `docker compose -f docker/docker-compose.yml down`. Agregar `-v` borra también el volumen con los modelos.
+
+Todas las variables son opcionales y tienen valor por defecto en el compose. Para cambiarlas se copia `docker/.env.example` a `docker/.env`:
+
+| Variable | Defecto | Uso |
+|---|---|---|
+| `API_P1_PUERTO`, `API_P2_PUERTO`, `API_P3_PUERTO`, `MLFLOW_PUERTO` | 8001, 8002, 8003, 5001 | Puertos publicados |
+| `API_CPUS`, `API_MEMORIA` | 1.0, 1g | Límites por API |
+| `MLFLOW_CPUS`, `MLFLOW_MEMORIA` | 1.0, 2g | Límites de MLflow. Con 1 GB y sus workers por defecto, MLflow 3 se reiniciaba por falta de memoria. |
+| `CACHE_TTL_SEG` | 60 | Segundos que cada API reutiliza el modelo antes de volver a consultar el registry. Con 0 lo descarga en cada petición. |
+| `FORZAR_ENTRENAMIENTO` | 0 | Con 1, `prep` reentrena y vuelve a registrar aunque los campeones existan |
+
+## 3. Pipeline de CI/CD
+
+
+El workflow `.github/workflows/ci.yml` corre en cada push a `main`, `feat/**` y `fix/**`, en cada pull request a `main` y a mano desde la pestaña Actions.
+
+| Job | Qué hace |
+|---|---|
+| `lint` | `ruff` con las reglas de errores que rompen la ejecución (sintaxis y nombres no definidos) |
+| `test` | `pytest tests` en matriz Python 3.10 y 3.11, con caché de pip. Sin datos en el runner, las pruebas que los necesitan se omiten. Publica el reporte JUnit como artefacto. |
+| `build` | Construye las imágenes `api`, `mlflow` y `prep` en paralelo con caché de capas de BuildKit |
+| `smoke` | Carga las imágenes, valida el compose, levanta MLflow y las tres APIs y comprueba que respondan |
+| `publish` | En push a `main`, publica las tres imágenes en GitHub Container Registry (`ghcr.io/<owner>/mibici-*`) |
+
+Un push nuevo a la misma rama cancela la corrida anterior. El workflow también se puede ejecutar en local, sin subir nada, con [act](https://github.com/nektos/act):
+
+```bash
+act push -P ubuntu-latest=catthehacker/ubuntu:act-latest --artifact-server-path /tmp/act-artifacts
+```
+
+`proyecto_mibici/monitoring/test_evidently_registro.py` queda fuera del CI porque necesita un servidor de Evidently Platform en el puerto 8000.
+
+![CI](https://github.com/ariosi86/TC5061-Proyecto-Equipo20/actions/workflows/ci.yml/badge.svg)
+
+Se ejecuta solo en cada push o pull request. Para lanzarlo a mano: pestaña Actions → CI → Run workflow. El estado verde indica que pasaron lint, pruebas, construcción y prueba de humo.
+
+## 4. Pruebas de carga y consumo de recursos
+
+La carpeta `locust/` contiene el escenario de carga y los scripts de análisis:
+
+| Archivo | Uso |
+|---|---|
+| `locustfile.py` | Un tipo de usuario por API. Genera payloads aleatorios que respetan las validaciones de `schemas.py`, manda un 5 % de peticiones inválidas que deben responder 422 y consulta `/health` de vez en cuando. |
+| `monitor_recursos.py` | Registra `docker stats` de cada contenedor en un CSV mientras corre la carga |
+| `ejecutar_carga.sh` | Mide un minuto de reposo y corre los escenarios de 10, 50 y 100 usuarios de 3 minutos con el monitor en paralelo |
+| `graficas.py` | Genera la tabla resumen y las gráficas de throughput, latencia, errores y recursos |
+| `finops.py` | Calcula el costo por inferencia y el costo mensual de cada opción de despliegue |
+
+Con el sistema levantado, el entorno virtual del proyecto activo y `locust` instalado (`pip install locust`). En Windows los scripts `.sh` se corren desde Git Bash:
+
+```bash
+bash locust/ejecutar_carga.sh cache_          # configuración por defecto, unos 11 minutos
+CACHE_TTL_SEG=0 docker compose -f docker/docker-compose.yml up -d
+bash locust/ejecutar_carga.sh                 # línea base: modelo descargado en cada petición
+python locust/finops.py --prefijos "" cache_  # comparación de costos
+```
+
+Para medir la capacidad máxima se quita el tiempo de espera entre peticiones:
+
+```bash
+LOCUST_ESPERA_MIN=0 LOCUST_ESPERA_MAX=0 locust -f locust/locustfile.py --headless -u 30 -r 10 -t 2m --csv reports/locust/estres_u30
+```
+
+Las salidas quedan en `reports/locust/`: CSV de Locust y de recursos, reportes HTML de Locust y figuras PNG.
+
+### Prueba de estrés completa
+
+```bash
+python locust/monitor_recursos.py --salida reports/locust/estres_u30_recursos.csv --duracion 125 &
+LOCUST_ESPERA_MIN=0 LOCUST_ESPERA_MAX=0 locust -f locust/locustfile.py --headless -u 30 -r 10 -t 2m \
+  --csv reports/locust/estres_u30 --html reports/locust/estres_u30.html --only-summary
+python locust/graficas.py --escenarios estres_u30 --prefijo estres_
+python locust/finops.py --prefijos base_ cache_
+```
+
+## 5. Resultados principales
+
+Resultados medidos en un MacBook Pro con Apple M5 (10 núcleos, 32 GB), Docker Desktop con 10 CPUs y 8 GB, imágenes arm64. Los valores absolutos dependen del equipo.
+
+| 100 usuarios concurrentes | Modelo descargado en cada petición | Caché del modelo (60 s) |
+|---|---|---|
+| Inferencias por segundo | 14.0 | 70.9 |
+| Latencia p95 | 7.1 s | 14 ms |
+| Tasa de error | 4.1 % | 0 % |
+| CPU por inferencia | 93.5 ms | 4.2 ms |
+
+La prueba de carga mostró que MLflow era el cuello de botella. Cada predicción le pedía el modelo al registry, MLflow se saturaba al 100 % de su CPU y el throughput bajaba al subir los usuarios. También exhibió una condición de carrera en `api-p1`, donde dos peticiones descargaban el modelo al mismo directorio temporal y una lo leía incompleto. La caché con candado de `docker/api/app.py` corrigió ambos problemas y conserva la actualización automática del campeón, que se refresca cada `CACHE_TTL_SEG` segundos. En la prueba de estrés el sistema atendió 1,657 inferencias por segundo, unas 615 por vCPU de API, con p95 de 69 ms y sin errores.
+
+Con el tráfico estimado de MiBici (unas 14,700 inferencias diarias) el sistema usa cerca del 1 % de su capacidad, y el costo mensual depende casi por completo del tamaño de la máquina encendida. El reporte detalla el cálculo y las optimizaciones propuestas.
+
+## 6. Análisis FinOps
+
+`locust/finops.py` estima el costo por inferencia a partir de las pruebas de carga y del consumo medido con `docker stats`. El reporte (`TC5061_Operacion_FinOps_Equipo20.pdf`) detalla el cálculo y la discusión.
+
+### Método y supuestos
+
+| Elemento | Valor |
+|---|---|
+| Precios de referencia | AWS us-east-1, Linux, on-demand (consultados el 18 de noviembre de 2026) |
+| Costo por consumo | 0.04048 USD por vCPU-hora y 0.004445 USD por GB-hora (modelo de Fargate), con el CPU y la memoria medidos de todos los contenedores, MLflow incluido |
+| Costo por capacidad reservada | Costo mensual de la instancia encendida 24/7 (730 h) entre las inferencias del mes |
+| Tráfico estimado | 14,700 inferencias al día (441,000 al mes): 300 estaciones × 24 h × 2 preguntas (P1 y P2) + 300 reasignaciones diarias de grupo (P3) |
+| Descuento Spot | 65 % (supuesto, no cotización) |
+
+Los precios y el tráfico son constantes al inicio de `locust/finops.py` y se pueden cambiar.
+
+### Resultados principales
+
+| | Sin caché | Con caché |
+|---|---|---|
+| CPU por inferencia (100 usuarios) | 98.8 ms | 4.4 ms |
+| Costo por consumo (USD por 1,000 inferencias) | 0.0013 | 0.0001 |
+| Capacidad máxima medida | n/a | 1,657 inferencias/s (unas 615 por vCPU de API) |
+
+Las cifras de CPU y capacidad se calculan con los resultados de las pruebas y varían con el equipo; los precios y el tráfico son supuestos fijos del script
+
+Con el tráfico estimado, el sistema usa cerca del 0.01 % de esa capacidad, por lo que el costo mensual lo determina la instancia encendida y no el cómputo de las inferencias:
+
+| Instancia | vCPU / RAM | USD al mes | USD por 1,000 inferencias |
+|---|---|---|---|
+| t3.small | 2 / 2 GiB | 15.18 | 0.0344 |
+| t3.medium | 2 / 4 GiB | 30.37 | 0.0689 |
+| t3.large | 2 / 8 GiB | 60.74 | 0.1377 |
+| m6i.xlarge | 4 / 16 GiB | 140.16 | 0.3178 |
+
+La memoria medida del sistema completo fue de unos 2.0-2.1 GiB con caché (MLflow 1.2 GiB y las tres APIs unos 0.85) y de hasta 3.5 GiB sin caché, así que una t3.small (2 GiB) no alcanza y una t3.medium (4 GiB) sí, incluso en el peor caso medido. El CPU realmente consumido por las inferencias costaría unos 0.02 USD al mes.
+
+### Optimizaciones propuestas
+
+| Optimización | USD al mes | Ahorro frente a t3.large |
+|---|---|---|
+| Mantener la caché del modelo (`CACHE_TTL_SEG=60`) | n/a | Habilita las demás |
+| Ajustar a t3.medium | 30.37 | 50 % |
+| Sacar MLflow de la ruta de servicio y correr las APIs en t3.small | 15.18 | 75 % |
+| t3.small en Spot (solo APIs) | 5.31 | 91 % |
+
+La tercera opción requiere un cambio de diseño: las APIs consultan el registry cada `CACHE_TTL_SEG` segundos, así que MLflow no puede apagarse sin incluir el modelo en la imagen o alargar el tiempo de caché. El costo de ejecutar MLflow para entrenar y registrar no está incluido.
+
+### Reproducir el análisis
+
+Con los resultados de las pruebas de carga ya generados (sección 4):
+
+```bash
+python locust/graficas.py --escenarios estres_u30 --prefijo estres_
+python locust/finops.py --prefijos base_ cache_
+```
+
+Las salidas quedan en `reports/locust/`: `finops_costos.csv`, `finops_optimizaciones.csv` y las figuras `comparacion_cache.png`, `finops_optimizaciones.png` y `finops_costo_por_inferencia.png`.
+
+### Limitaciones
+
+Las pruebas corrieron en un solo equipo (MacBook Pro M5, imágenes `arm64`) con el generador de carga en la misma máquina. La capacidad por vCPU es una referencia, no una garantía en instancias de la nube: las t3 acumulan
