@@ -95,26 +95,139 @@ class P1Output(BaseModel):
     demanda_predicha: float = Field(..., ge=0, description="Viajes esperados en la hora objetivo (≥ 0)")
 
 # --- P2: riesgo de desbalance ---
-class P2Input(BaseModel):
-    hora_del_dia: int = Field(..., ge=0, le=23)
-    dia_semana: int = Field(..., ge=0, le=6)
-    fin_de_semana: int = Field(..., ge=0, le=1)
-    capacidad: float = Field(..., gt=0)
-    salidas: float = Field(..., ge=0)
-    llegadas: float = Field(..., ge=0)
-    balance_acumulado_dia: float
-    acumulado_relativo: float
-    balance_ult_3h_relativo: float
-    riesgo_vacia: int = Field(..., ge=0, le=1)
-    riesgo_llena: int = Field(..., ge=0, le=1)
+FEATURES_P2 = [
+    "hora_del_dia", "dia_semana", "fin_de_semana", "capacidad",
+    "salidas", "llegadas", "balance_acumulado_dia",
+    "acumulado_relativo", "balance_ult_3h_relativo",
+    "riesgo_vacia", "riesgo_llena",
+]
 
-    def to_dataframe(self):
-        import pandas as pd
-        return pd.DataFrame([self.model_dump()])[
-            ["hora_del_dia", "dia_semana", "fin_de_semana", "capacidad",
-             "salidas", "llegadas", "balance_acumulado_dia", "acumulado_relativo",
-             "balance_ult_3h_relativo", "riesgo_vacia", "riesgo_llena"]
-        ]
+# Mismo valor que P2_UMBRAL en proyecto_mibici/config.py (±50 % de la capacidad)
+UMBRAL_P2 = 0.5
+# Tolerancia al comparar las variables relativas que calcula quien usa la API
+TOLERANCIA_P2 = 1e-3
+
+
+class P2Input(BaseModel):
+    """Estado de una estación en la hora observada, para predecir si estará en riesgo
+    (vacía o llena) en la hora siguiente.
+
+    Las variables derivadas se calculan igual que en features_p2.py:
+    acumulado_relativo = balance_acumulado_dia / capacidad,
+    balance_ult_3h_relativo = balance de las últimas 3 horas / capacidad, y
+    riesgo_vacia / riesgo_llena cuando el balance del día cruza ±50 % de la capacidad.
+    Se rechazan combinaciones contradictorias entre estas variables.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",  # rechaza campos que no existen en el esquema
+        json_schema_extra={
+            "examples": [
+                {
+                    "hora_del_dia": 8,
+                    "dia_semana": 2,
+                    "fin_de_semana": 0,
+                    "capacidad": 20,
+                    "salidas": 6,
+                    "llegadas": 2,
+                    "balance_acumulado_dia": -9,
+                    "acumulado_relativo": -0.45,
+                    "balance_ult_3h_relativo": -0.35,
+                    "riesgo_vacia": 0,
+                    "riesgo_llena": 0,
+                }
+            ]
+        },
+    )
+
+    hora_del_dia: int = Field(
+        ..., ge=0, le=23, examples=[8],
+        description="Hora observada (0 a 23); se predice la hora siguiente",
+    )
+    dia_semana: int = Field(
+        ..., ge=0, le=6, examples=[2],
+        description="Día de la semana (lunes = 0, domingo = 6)",
+    )
+    fin_de_semana: int = Field(
+        ..., ge=0, le=1, examples=[0],
+        description="1 si dia_semana es sábado (5) o domingo (6)",
+    )
+    capacidad: int = Field(
+        ..., gt=0, examples=[20],
+        description="Número de anclajes de la estación",
+    )
+    salidas: int = Field(
+        ..., ge=0, examples=[6],
+        description="Bicicletas que salieron en la hora observada",
+    )
+    llegadas: int = Field(
+        ..., ge=0, examples=[2],
+        description="Bicicletas que llegaron en la hora observada",
+    )
+    balance_acumulado_dia: int = Field(
+        ..., examples=[-9],
+        description="Llegadas menos salidas desde el inicio del día operativo (3:00)",
+    )
+    acumulado_relativo: float = Field(
+        ..., allow_inf_nan=False, examples=[-0.45],
+        description="balance_acumulado_dia / capacidad",
+    )
+    balance_ult_3h_relativo: float = Field(
+        ..., allow_inf_nan=False, examples=[-0.35],
+        description="(Llegadas - salidas de las últimas 3 horas, incluida la observada) / capacidad",
+    )
+    riesgo_vacia: int = Field(
+        ..., ge=0, le=1, examples=[0],
+        description="1 si balance_acumulado_dia <= -50 % de la capacidad",
+    )
+    riesgo_llena: int = Field(
+        ..., ge=0, le=1, examples=[0],
+        description="1 si balance_acumulado_dia >= 50 % de la capacidad",
+    )
+
+    @model_validator(mode="after")
+    def variables_coherentes(self):
+        errores = []
+        if self.fin_de_semana != int(self.dia_semana >= 5):
+            errores.append(
+                f"fin_de_semana={self.fin_de_semana} no corresponde a dia_semana={self.dia_semana}"
+            )
+        esperado = self.balance_acumulado_dia / self.capacidad
+        if abs(self.acumulado_relativo - esperado) > TOLERANCIA_P2:
+            errores.append(
+                f"acumulado_relativo={self.acumulado_relativo} debería ser "
+                f"balance_acumulado_dia / capacidad = {esperado:.4f}"
+            )
+        if self.riesgo_vacia != int(self.balance_acumulado_dia <= -UMBRAL_P2 * self.capacidad):
+            errores.append(
+                f"riesgo_vacia={self.riesgo_vacia} no corresponde a balance_acumulado_dia="
+                f"{self.balance_acumulado_dia} con capacidad={self.capacidad}"
+            )
+        if self.riesgo_llena != int(self.balance_acumulado_dia >= UMBRAL_P2 * self.capacidad):
+            errores.append(
+                f"riesgo_llena={self.riesgo_llena} no corresponde a balance_acumulado_dia="
+                f"{self.balance_acumulado_dia} con capacidad={self.capacidad}"
+            )
+        if errores:
+            raise ValueError("; ".join(errores))
+        return self
+
+    def to_dataframe(self) -> pd.DataFrame:
+        df = pd.DataFrame([self.model_dump()], columns=FEATURES_P2)
+        # Tipos como en el entrenamiento: enteros, decimales y riesgos como booleanos
+        return df.astype({
+            "hora_del_dia": "int32",
+            "dia_semana": "int32",
+            "fin_de_semana": "int64",
+            "capacidad": "int32",
+            "salidas": "int64",
+            "llegadas": "int64",
+            "balance_acumulado_dia": "int64",
+            "acumulado_relativo": "float64",
+            "balance_ult_3h_relativo": "float64",
+            "riesgo_vacia": "bool",
+            "riesgo_llena": "bool",
+        })
 
 
 class P2Output(BaseModel):
@@ -122,8 +235,14 @@ class P2Output(BaseModel):
     modelo: str
     version: str
     run_id: str
-    prob_riesgo: float
-    pred_riesgo: int
+    prob_riesgo: float = Field(
+        ..., ge=0, le=1,
+        description="Probabilidad de que la estación esté en riesgo en la hora siguiente",
+    )
+    pred_riesgo: int = Field(
+        ..., ge=0, le=1,
+        description="1 si se predice que la estación quedará vacía o llena en la hora siguiente",
+    )
 
 
 # --- P3: clustering de estaciones ---
