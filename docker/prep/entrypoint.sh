@@ -1,9 +1,6 @@
 #!/bin/sh
 set -e
 
-#!/bin/sh
-set -e
-
 MLFLOW_HOST="${MLFLOW_HOST:-mlflow}"
 MLFLOW_PORT="${MLFLOW_PORT:-5000}"
 
@@ -14,6 +11,27 @@ until python -c "import socket; s = socket.socket(); s.settimeout(2); s.connect(
   sleep 2
 done
 echo "MLflow disponible."
+
+# Si los tres campeones ya están en el Model Registry (volumen persistente), no se reentrena.
+# FORZAR_ENTRENAMIENTO=1 obliga a correr todo el flujo de nuevo.
+if [ "${FORZAR_ENTRENAMIENTO:-0}" != "1" ]; then
+  if python - <<'EOF'
+import sys
+from mlflow.tracking import MlflowClient
+
+client = MlflowClient()
+modelos = ["mibici-equipo20-p1-demanda", "mibici-equipo20-p2-riesgo", "mibici-equipo20-p3-grupos"]
+try:
+    for nombre in modelos:
+        client.get_model_version_by_alias(nombre, "champion")
+except Exception:
+    sys.exit(1)
+EOF
+  then
+    echo "==> Los tres campeones ya están registrados; se omite el entrenamiento."
+    exit 0
+  fi
+fi
 
 echo "==> Paso 1: Ingesta de datos (dataset.py)"
 python -m proyecto_mibici.dataset
