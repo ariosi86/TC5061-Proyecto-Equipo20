@@ -80,6 +80,7 @@ services:
     environment:
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
       MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-mibici-equipo20}
+      EVIDENTLY_API_URL: ${EVIDENTLY_API_URL:-http://evidently:8000}
       FORZAR_ENTRENAMIENTO: ${FORZAR_ENTRENAMIENTO:-0}
       PYTHONPATH: /app
     working_dir: /app
@@ -93,6 +94,32 @@ services:
     depends_on:
       mlflow:
         condition: service_healthy
+
+  evidently:
+    build:
+      context: ..
+      dockerfile: docker/evidently/Containerfile
+    image: mibici-evidently:latest
+    container_name: evidently
+    restart: unless-stopped
+    ports:
+      - "${EVIDENTLY_PUERTO:-8000}:8000"
+    volumes:
+      - evidently_workspace:/app/workspace
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/version', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "${EVIDENTLY_CPUS:-1.0}"
+          memory: ${EVIDENTLY_MEMORIA:-1g}
+    logging: *logging
+    networks:
+      - mibici-net
 
   api-p1:
     <<: *api
@@ -142,9 +169,12 @@ services:
     networks:
       - mibici-net
     depends_on:
-      - api-p1
-      - api-p2
-      - api-p3
+      api-p1:
+        condition: service_healthy
+      api-p2:
+        condition: service_healthy
+      api-p3:
+        condition: service_healthy
 
 networks:
   mibici-net:
@@ -152,3 +182,4 @@ networks:
 
 volumes:
   mlruns:
+  evidently_workspace:

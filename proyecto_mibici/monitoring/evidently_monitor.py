@@ -92,7 +92,7 @@ from proyecto_mibici.monitoring.datos_p2 import (
 )
 
 # URL del servidor de Evidently UI (API de la plataforma, no solo lectura del frontend).
-EVIDENTLY_API_URL = "http://127.0.0.1:8000"
+EVIDENTLY_API_URL = os.getenv("EVIDENTLY_API_URL", "http://127.0.0.1:8000").rstrip("/")
 
 
 # ---------------------------------------------------------------------- #
