@@ -94,6 +94,8 @@ services:
     depends_on:
       mlflow:
         condition: service_healthy
+      evidently:
+        condition: service_healthy
 
   evidently:
     build:
