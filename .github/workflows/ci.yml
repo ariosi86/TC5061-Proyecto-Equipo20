@@ -1,0 +1,189 @@
+# CI/CD del sistema MiBici (Equipo 20)
+#   1. lint   : errores de sintaxis y nombres no definidos (ruff)
+#   2. test   : pytest en matriz Python 3.10 / 3.11, con caché de pip
+#   3. build  : imágenes api, mlflow y prep con caché de capas de BuildKit
+#   4. smoke  : levanta MLflow y las tres APIs con Docker Compose y verifica que respondan
+#   5. publish: en push a main publica las imágenes en GitHub Container Registry (ghcr.io)
+name: CI/CD MiBici
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Un push nuevo a la misma rama cancela la ejecución anterior
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRO: ghcr.io
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install "ruff>=0.6.0"
+      # Errores que rompen la ejecución: sintaxis, comparaciones inválidas y nombres no definidos
+      - run: ruff check --select E9,F63,F7,F82 --output-format=github .
+
+  test:
+    name: Pruebas (Python ${{ matrix.python-version }})
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            docker/constraints.txt
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -c docker/constraints.txt -r requirements.txt
+      # Sin datos de MiBici ni modelos en el runner: las pruebas que los necesitan se omiten
+      # (skipif en conftest/deepchecks/pipeline) y corren las unitarias con datos sintéticos.
+      # Se limita a tests/: proyecto_mibici/monitoring/test_evidently_registro.py es de integración
+      # y requiere un servidor de Evidently Platform en :8000, que no existe en el runner.
+      - name: Ejecutar pytest
+        env:
+          MPLBACKEND: Agg
+        run: pytest tests -q -rs --junitxml=reports/pytest-${{ matrix.python-version }}.xml
+      - name: Guardar resultados de pytest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-py${{ matrix.python-version }}
+          path: reports/pytest-${{ matrix.python-version }}.xml
+
+  build:
+    name: Build imagen ${{ matrix.imagen }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        imagen: [api, mlflow, prep]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Construir imagen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.imagen }}/Containerfile
+          tags: mibici-${{ matrix.imagen }}:${{ github.sha }}
+          # Caché de capas en GitHub Actions (act no la implementa, ahí se omite)
+          cache-from: ${{ !env.ACT && format('type=gha,scope={0}', matrix.imagen) || '' }}
+          cache-to: ${{ !env.ACT && format('type=gha,mode=max,scope={0}', matrix.imagen) || '' }}
+          outputs: type=docker,dest=/tmp/mibici-${{ matrix.imagen }}.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: imagen-${{ matrix.imagen }}
+          path: /tmp/mibici-${{ matrix.imagen }}.tar
+          retention-days: 1
+
+  smoke:
+    name: Smoke test con Docker Compose
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      # Proyecto aparte: con act, "down -v" no toca los volúmenes del sistema local (proyecto mibici)
+      COMPOSE_PROJECT_NAME: mibici-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: imagen-*
+          path: /tmp/imagenes
+          merge-multiple: true
+      - name: Cargar imágenes construidas
+        run: |
+          for f in /tmp/imagenes/*.tar; do docker load -i "$f"; done
+          for i in api mlflow; do docker tag mibici-$i:${{ github.sha }} mibici-$i:latest; done
+      - name: Validar docker-compose.yml
+        run: docker compose -f docker/docker-compose.yml config -q
+      # prep (descarga de datos y entrenamiento) no corre en CI: se levantan MLflow y las APIs
+      # y se comprueba que cada servicio arranque y responda.
+      - name: Levantar MLflow
+        run: docker compose -f docker/docker-compose.yml up -d --no-build --no-deps --wait mlflow
+      - name: Levantar APIs
+        run: docker compose -f docker/docker-compose.yml up -d --no-build --no-deps api-p1 api-p2 api-p3
+      # Las verificaciones corren dentro de cada contenedor (docker exec): funcionan igual en
+      # GitHub y al ejecutar el workflow en local con act, donde el runner es otro contenedor.
+      - name: Verificar servicios
+        run: |
+          docker exec mlflow python -c "import urllib.request as u; print('mlflow /health', u.urlopen('http://localhost:5000/health', timeout=5).status)"
+          for api in api-p1 api-p2 api-p3; do
+            docker exec -i $api python - <<'EOF'
+          import time, urllib.request as u, urllib.error as e, os
+          for intento in range(20):
+              try:
+                  print(os.environ["PREGUNTA"], "/docs", u.urlopen("http://localhost:8000/docs", timeout=5).status)
+                  break
+              except Exception:
+                  time.sleep(3)
+          else:
+              raise SystemExit("la API no respondió en /docs")
+          # Sin campeones registrados /health responde 503 con JSON: el servicio está vivo
+          try:
+              r = u.urlopen("http://localhost:8000/health", timeout=15)
+              codigo, cuerpo = r.status, r.read()
+          except e.HTTPError as err:
+              codigo, cuerpo = err.code, err.read()
+          print(os.environ["PREGUNTA"], "/health", codigo, cuerpo[:120])
+          assert codigo in (200, 503), codigo
+          EOF
+          done
+      - name: Logs de los contenedores
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml logs --tail 50
+      - name: Bajar servicios
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down -v
+
+  publish:
+    name: Publicar imagen ${{ matrix.imagen }} en GHCR
+    needs: smoke
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        imagen: [api, mlflow, prep]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: imagen-${{ matrix.imagen }}
+          path: /tmp
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRO }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Etiquetar y subir
+        run: |
+          docker load -i /tmp/mibici-${{ matrix.imagen }}.tar
+          destino=${{ env.REGISTRO }}/${GITHUB_REPOSITORY_OWNER,,}/mibici-${{ matrix.imagen }}
+          for tag in ${{ github.sha }} latest; do
+            docker tag mibici-${{ matrix.imagen }}:${{ github.sha }} $destino:$tag
+            docker push $destino:$tag
+          done

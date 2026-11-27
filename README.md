@@ -3592,7 +3592,7 @@ mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./
 
 Si el servidor no corre en `http://localhost:5000`, definir `MLFLOW_TRACKING_URI` antes de continuar.
 
-La clase EvidentlyMonitor intenta además subir los reportes a Evidently UI (evidently ui, puerto 8000). Si no está corriendo, muestra un aviso y guarda el registro como JSON en reports/drift/registro/; los reportes y resultados no cambian. Ver la [sección 6](#6-monitoreo-drift-y-ab-testing) para el detalle de la integración con la interfaz.
+La clase `EvidentlyMonitor` intenta además subir los reportes a Evidently UI (`evidently ui`, puerto 8000). Si no está corriendo, muestra un aviso y guarda el registro como JSON en `reports/drift/registro/`; los reportes y resultados no cambian. Ver `evidently.md` para usar la interfaz.
 
 ### 2. Datos y champions registrados
 

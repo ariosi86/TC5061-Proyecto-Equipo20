@@ -35,3 +35,6 @@ packaging>=26.3
 
 # Notebooks y exploración
 ipykernel>=6.29.0
+
+#Reporte Evidently
+evidently>=0.7.23
