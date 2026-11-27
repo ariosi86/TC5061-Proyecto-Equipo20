@@ -29,23 +29,63 @@ except Exception:
 EOF
   then
     echo "==> Los tres campeones ya están registrados; se omite el entrenamiento."
-    exit 0
+  else
+    echo "==> Paso 1: Ingesta de datos (dataset.py)"
+    python -m proyecto_mibici.dataset
+
+    echo "==> Paso 2: Entrenamiento P1 (lgbm_tweedie)"
+    python -m proyecto_mibici.modeling.train_p1 --model lgbm_tweedie
+
+    echo "==> Paso 3: Entrenamiento P2 (gbm)"
+    python -m proyecto_mibici.modeling.train_p2 --modelo gbm
+
+    echo "==> Paso 4: Entrenamiento P3 (kmeans k=4)"
+    python -m proyecto_mibici.modeling.train_p3 --modelo kmeans --n-clusters 4 --n-init 10
+
+    echo "==> Paso 5: Registro de campeones en Model Registry"
+    python run_mejor_modelo.py
+
+    echo "==> Prep entrenamiento completado: campeones registrados en MLflow"
   fi
+else
+  echo "==> Paso 1: Ingesta de datos (dataset.py)"
+  python -m proyecto_mibici.dataset
+
+  echo "==> Paso 2: Entrenamiento P1 (lgbm_tweedie)"
+  python -m proyecto_mibici.modeling.train_p1 --model lgbm_tweedie
+
+  echo "==> Paso 3: Entrenamiento P2 (gbm)"
+  python -m proyecto_mibici.modeling.train_p2 --modelo gbm
+
+  echo "==> Paso 4: Entrenamiento P3 (kmeans k=4)"
+  python -m proyecto_mibici.modeling.train_p3 --modelo kmeans --n-clusters 4 --n-init 10
+
+  echo "==> Paso 5: Registro de campeones en Model Registry"
+  python run_mejor_modelo.py
 fi
 
-echo "==> Paso 1: Ingesta de datos (dataset.py)"
-python -m proyecto_mibici.dataset
+# Paso 6: Poblar Evidently UI con reportes de drift P1/P2/P3 si aún no existen proyectos
+if python - <<'EOF'
+import json, os, sys, urllib.request
 
-echo "==> Paso 2: Entrenamiento P1 (lgbm_tweedie)"
-python -m proyecto_mibici.modeling.train_p1 --model lgbm_tweedie
-
-echo "==> Paso 3: Entrenamiento P2 (gbm)"
-python -m proyecto_mibici.modeling.train_p2 --modelo gbm
-
-echo "==> Paso 4: Entrenamiento P3 (kmeans k=4)"
-python -m proyecto_mibici.modeling.train_p3 --modelo kmeans --n-clusters 4 --n-init 10
-
-echo "==> Paso 5: Registro de campeones en Model Registry"
-python run_mejor_modelo.py
-
-echo "==> Prep completado: campeones registrados en MLflow"
+url = os.environ.get("EVIDENTLY_API_URL", "http://evidently:8000").rstrip("/")
+esperados = {"p1-demanda-horaria", "p2-riesgo-desequilibrio", "mibici-equipo20-p3"}
+try:
+    with urllib.request.urlopen(f"{url}/api/v2/projects", timeout=5) as r:
+        proyectos = json.loads(r.read().decode("utf-8"))
+        nombres = {p.get("name") for p in proyectos}
+        if esperados.issubset(nombres):
+            sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+EOF
+then
+  echo "==> Evidently UI ya tiene los 3 proyectos (P1, P2, P3) registrados; se omite el envío de drift."
+else
+  echo "==> Paso 6: Generando y enviando reportes de drift (P1, P2, P3) a Evidently UI..."
+  python -m proyecto_mibici.monitoring.drift_report
+  python -m proyecto_mibici.monitoring.datos_p2 && python -m proyecto_mibici.monitoring.drift_report_p2
+  python -m proyecto_mibici.monitoring.datos_p3 && python -m proyecto_mibici.monitoring.drift_report_p3 --api-evidently
+  echo "==> Reportes de drift enviados a Evidently UI."
+fi

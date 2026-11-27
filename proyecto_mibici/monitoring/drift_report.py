@@ -62,6 +62,7 @@ def main(n_muestra: int = typer.Option(100_000, "--n-muestra", help="Filas por c
             actual,
             nombre=f"p1_{nombre}",
             registrar_proyecto_nombre="p1-demanda-horaria",
+            log_mlflow=True,
         )
 
         logger.info(f"Variables con drift: {resumen['vars_con_drift']}")
